@@ -3,10 +3,12 @@
 // Sie ist kein Geheimnis: Sie steht in jeder Web-App öffentlich im Code und funktioniert nur
 // auf den Adressen, die in der Cloud Console als "Autorisierte JavaScript-Quellen" eingetragen sind.
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 export const STAND = '20.11.2026';
 
-export const GOOGLE_CLIENT_ID = '';
+// Google-Cloud-Projekt „Gesundheitsakte“ (gesundheitsakte-515315) im privaten Konto, Client „Gesundheitsakte Web“.
+// Erlaubte Adressen: https://mwenzelides-privat.github.io und http://localhost:8792
+export const GOOGLE_CLIENT_ID = '72259479394-3eh64lin7nld6ve59ltbt5g9cm4gnqgf.apps.googleusercontent.com';
 
 // Voller Drive-Zugriff ist nötig, damit die App auch Dateien sieht, die du aus der TK-App
 // oder mit dem Drive-Scanner in den Eingang legst (die legt nicht die App selbst an).
