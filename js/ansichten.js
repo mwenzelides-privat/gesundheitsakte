@@ -26,7 +26,7 @@ export function ansichtBegruessung() {
   return `<div class="begruessung">
     <div class="brand-mark gross-mark">${svg('plus', 'width="34" height="34" stroke-width="2.6"')}</div>
     <h1>Gesundheitsakte</h1>
-    <p>Deine Krankengeschichte, Befunde, Arzttermine und Vorsorge an einem Ort. Die Daten liegen ausschließlich in deinem privaten Google Drive im Ordner <span class="mono">Gesundheitsakte</span>.</p>
+    <p>Deine Krankengeschichte, Befunde, Arzttermine und Vorsorge an einem Ort. Die Daten liegen ausschließlich in deinem privaten Google Drive im Ordner <span class="mono">60 Gesundheit/Gesundheitsakte</span>.</p>
     <div class="knoepfe mitte">
       ${eingerichtet ? `<button class="btn primaer gross" data-aktion="verbinden">${svg('wolke')}Mit privatem Google-Konto anmelden</button>` : ''}
       <button class="btn gross" data-aktion="beispiel">Beispieldaten ansehen</button>
@@ -505,7 +505,7 @@ export function ansichtTK() {
   return `${BEISPIEL()}
   <div class="kopf"><div><h1>TK und Import</h1><p>Die TK bietet keine Schnittstelle, über die ein eigenes Programm die elektronische Patientenakte abrufen kann. Deshalb kommen die Daten über drei Wege in die Akte.</p></div></div>
   <div class="wege">
-    <div class="weg"><span class="nr">Weg 1 · laufend</span><h3>Aus der TK-App teilen</h3><p>In der TK-App ein Dokument der Patientenakte öffnen, „Teilen“ antippen und Google Drive, Ordner <span class="mono">Gesundheitsakte/00_Eingang</span> wählen. Unter Dokumente → Eingang ordnest du es ein.</p><span class="pill st-bald">am S26 noch zu prüfen</span></div>
+    <div class="weg"><span class="nr">Weg 1 · laufend</span><h3>Aus der TK-App teilen</h3><p>In der TK-App ein Dokument der Patientenakte öffnen, „Teilen“ antippen und Google Drive, Ordner <span class="mono">60 Gesundheit/Gesundheitsakte/00_Eingang</span> wählen. Unter Dokumente → Eingang ordnest du es ein.</p><span class="pill st-bald">am S26 noch zu prüfen</span></div>
     <div class="weg"><span class="nr">Weg 2 · vierteljährlich</span><h3>Behandlungsübersicht</h3><p>Die Abrechnungsdaten der TK enthalten jeden Arztkontakt mit Diagnosen (ICD-10). Als Dokument der Art „TK-Abrechnung“ mit Titel „TK-Behandlungsübersicht 2. Quartal 2026“ ablegen, dann erscheint es rechts.</p><span class="pill st-spaeter">Auswertung ab Iteration 6</span></div>
     <div class="weg"><span class="nr">Weg 3 · einmalig</span><h3>Auskunft für alle Jahre</h3><p>Leistungs- und Kostenauskunft nach § 305 SGB V bzw. Datenauskunft nach Art. 15 DSGVO bei der TK anfordern. Liefert die Historie, auch aus der Zeit vor der Patientenakte.</p><span class="pill st-spaeter">noch nicht angefordert</span></div>
   </div>
@@ -538,7 +538,7 @@ export function ansichtEinstellungen() {
     <div class="stack">
       <section class="panel"><div class="panel-kopf"><h2>Speicherort</h2></div>
         ${Z.modus === 'konto' ? `<dl class="meta-grid"><dt>Konto</dt><dd>${esc(Z.konto.email)}</dd><dt>Verbindung</dt><dd>${verbunden ? 'verbunden' : 'getrennt'}</dd>
-          <dt>Akte</dt><dd class="mono">Gesundheitsakte/akte.json</dd><dt>Gespeichert</dt><dd>${Z.ungespeichert ? 'Änderungen noch nicht übertragen' : Z.zuletztGespeichert ? 'zuletzt ' + Z.zuletztGespeichert.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'aktuell'}</dd>
+          <dt>Akte</dt><dd class="mono">60 Gesundheit/Gesundheitsakte/akte.json</dd><dt>Gespeichert</dt><dd>${Z.ungespeichert ? 'Änderungen noch nicht übertragen' : Z.zuletztGespeichert ? 'zuletzt ' + Z.zuletztGespeichert.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'aktuell'}</dd>
           <dt>Sicherungen</dt><dd>täglich in <span class="mono">90_Sicherungen</span>, die letzten 30 Tage</dd></dl>
           <div class="knoepfe" style="margin-top:14px">${verbunden ? '<button class="btn" data-aktion="trennen">Verbindung trennen</button>' : '<button class="btn primaer" data-aktion="verbinden">Verbinden</button>'}
           <button class="btn" data-aktion="export">Akte als Datei speichern</button><button class="btn" data-aktion="abmelden-loeschen">Abmelden und Daten von diesem Gerät entfernen</button></div>`

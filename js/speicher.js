@@ -4,7 +4,7 @@
 // Drive geschrieben. Vor jedem Schreiben wird geprüft, ob die Datei in Drive inzwischen von einem
 // anderen Gerät geändert wurde (Prüfsumme). Dann entscheidest du, welcher Stand gilt.
 // Einmal am Tag wird vor dem Überschreiben eine Kopie in 90_Sicherungen abgelegt.
-import { ORDNER, AKTE_DATEI, SICHERUNGEN_BEHALTEN, PRIVATE_DOMAINS } from './konfig.js';
+import { ORDNER, AKTE_DATEI, SICHERUNGEN_BEHALTEN, PRIVATE_DOMAINS, WURZEL_PFAD } from './konfig.js';
 import { neueAkte, pruefen, vorsorgeAbgleichen, kat } from './modell.js';
 import { beispielAkte } from './beispiel.js';
 import { heuteIso, dateiname } from './hilfen.js';
@@ -122,7 +122,12 @@ export async function verbinden(konto) {
 
 async function ordnerStruktur(drive) {
   const holen = async (name, eltern) => (await drive.ordnerSuchen(name, eltern)) || drive.ordnerAnlegen(name, eltern);
-  const wurzel = await holen(ORDNER.wurzel, 'root');
+  // Ablage liegt unter „Meine Ablage/60 Gesundheit/Gesundheitsakte“. Eine Akte am alten Ort (direkt in „Meine Ablage“)
+  // wird weiter benutzt, damit nie eine zweite, leere Akte entsteht.
+  let wurzel = 'root';
+  const alt = await drive.ordnerSuchen(ORDNER.wurzel, 'root');
+  if (alt && await drive.dateiSuchen(AKTE_DATEI, alt)) wurzel = alt;
+  else for (const name of WURZEL_PFAD) wurzel = await holen(name, wurzel);
   const [eingang, fachbereiche, tk, sicherungen] = await Promise.all(
     [ORDNER.eingang, ORDNER.fachbereiche, ORDNER.tk, ORDNER.sicherungen].map(n => holen(n, wurzel)));
   return { wurzel, eingang, fachbereiche, tk, sicherungen, fach: Z.ids.fach || {} };

@@ -3,7 +3,7 @@
 // Sie ist kein Geheimnis: Sie steht in jeder Web-App öffentlich im Code und funktioniert nur
 // auf den Adressen, die in der Cloud Console als "Autorisierte JavaScript-Quellen" eingetragen sind.
 
-export const VERSION = '0.3.0';
+export const VERSION = '0.3.1';
 export const STAND = '23.11.2026';
 
 // Google-Cloud-Projekt „Gesundheitsakte“ (gesundheitsakte-515315) im privaten Konto, Client „Gesundheitsakte Web“.
@@ -14,6 +14,8 @@ export const GOOGLE_CLIENT_ID = '72259479394-3eh64lin7nld6ve59ltbt5g9cm4gnqgf.ap
 // oder mit dem Drive-Scanner in den Eingang legst (die legt nicht die App selbst an).
 export const SCOPES = 'https://www.googleapis.com/auth/drive';
 
+// Ablageort in „Meine Ablage“: 60 Gesundheit/Gesundheitsakte (seit 0.3.1, vorher direkt in „Meine Ablage“)
+export const WURZEL_PFAD = ['60 Gesundheit', 'Gesundheitsakte'];
 export const ORDNER = {
   wurzel: 'Gesundheitsakte',
   eingang: '00_Eingang',
