@@ -3,7 +3,7 @@
 // Sie ist kein Geheimnis: Sie steht in jeder Web-App öffentlich im Code und funktioniert nur
 // auf den Adressen, die in der Cloud Console als "Autorisierte JavaScript-Quellen" eingetragen sind.
 
-export const VERSION = '0.5.0';
+export const VERSION = '0.6.0';
 export const STAND = '23.11.2026';
 
 // Google-Cloud-Projekt „Gesundheitsakte“ (gesundheitsakte-515315) im privaten Konto, Client „Gesundheitsakte Web“.
@@ -35,3 +35,12 @@ export const SICHERUNGEN_BEHALTEN = 30;
 
 // Konten mit diesen Domains gelten ohne Rückfrage als privat.
 export const PRIVATE_DOMAINS = ['gmail.com', 'googlemail.com'];
+
+// Befund-Auswertung mit Claude (Iteration 5).
+// Der API-Schlüssel steht NICHT hier im (öffentlichen) Code, sondern nur in deinem Google Drive
+// (Gesundheitsakte/claude-zugang.json) und wird beim Verbinden in den Speicher des Browsers geladen.
+export const KI_MODELL = 'claude-opus-5-5';
+export const KI_SDK = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';
+export const KI_SCHLUESSEL_DATEI = 'claude-zugang.json';
+export const KI_MAX_MB = 20;                       // Anfrage-Grenze der API: 32 MB (Base64 macht Dateien ~⅓ größer)
+export const KI_PREIS = { eingabe: 4, ausgabe: 20 }; // US-Dollar je 1 Mio. Token (Claude Opus 5.5)

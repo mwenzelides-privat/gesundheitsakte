@@ -1,6 +1,6 @@
 // Iteration 4: Dokumente erkennen – ohne KI, nur aus Dateiname und PDF-Text.
 // Schlägt Titel, Datum, Art, Fachbereich, Arzt und Erkrankung vor. Eingescannte PDFs ohne Textebene
-// und Fotos liefern keinen Text; dann bleibt es beim Dateinamen (Texterkennung per KI folgt in Iteration 5).
+// und Fotos liefern keinen Text; dann bleibt es beim Dateinamen. Die genaue Auswertung macht Claude (auswertung.js).
 import { nachname, norm } from './kalender.js';
 import { heuteIso, iso } from './hilfen.js';
 

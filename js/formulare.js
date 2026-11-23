@@ -4,6 +4,7 @@ import { esc, heuteIso, neueId, WOCHE, WT_LANG, svg, datum } from './hilfen.js';
 import { finde, kat, faecher, STATUS_ERKRANKUNG, DOKUMENT_TYPEN, zeitenLesen, zeitenText, vorsorgeAbgleichen } from './modell.js';
 import { blattKopf, formularProfil } from './ansichten.js';
 import { kandidatZuordnen, kalenderAbgleichen, personenFestlegen } from './kalender.js';
+import { schluesselSpeichern, neueEintraegeAnlegen } from './auswertung.js';
 
 const A = () => Z.akte;
 const QUELLEN = ['Scan', 'TK-ePA', 'E-Mail', 'Papier', 'Arztportal', 'Sonstiges'];
@@ -141,7 +142,9 @@ export function formular(typ, id, vorgaben = {}) {
         </div>
         ${feld({ name: 'arzt', label: 'Arzt', typ: 'select', wert: d.arzt, optionen: arztOptionen() })}
         ${feld({ name: 'erk', label: 'Gehört zu Erkrankung', typ: 'select', wert: d.erk, optionen: erkOptionen() })}
-        ${feld({ name: 'kurz', label: 'Inhalt / Notiz', typ: 'textarea', wert: d.kurz, attr: 'placeholder="Wichtigste Aussage, Diagnose, Werte …"', hilfe: 'Ab Iteration 5 schlägt die Auswertung diesen Text vor.' })}`,
+        ${vorschlag?.arztNeu ? feld({ name: 'arztNeu', label: `Neue Praxis anlegen: ${vorschlag.arztNeu.name}`, typ: 'checkbox', wert: true, hilfe: 'Gilt nur, wenn oben kein Arzt gewählt ist.' }) : ''}
+        ${vorschlag?.erkNeu ? feld({ name: 'erkNeu', label: `Neue Erkrankung anlegen: ${vorschlag.erkNeu.titel}${vorschlag.erkNeu.icd ? ' (' + vorschlag.erkNeu.icd + ')' : ''}`, typ: 'checkbox', wert: true, hilfe: 'Gilt nur, wenn oben keine Erkrankung gewählt ist.' }) : ''}
+        ${feld({ name: 'kurz', label: d.ki ? 'Zusammenfassung (Claude)' : 'Inhalt / Notiz', typ: 'textarea', wert: d.kurz, attr: 'placeholder="Wichtigste Aussage, Diagnose, Werte …"', hilfe: d.ki ? 'Diagnosen und Messwerte aus der Auswertung werden mit gespeichert.' : 'Mit „Mit Claude auswerten“ wird dieser Text vorgeschlagen.' })}`,
         { loeschbar: !!id, knopf: eingangsDatei ? 'Einordnen' : 'Speichern', extra: eingangsDatei ? `data-eingang="${esc(eingangsDatei.id)}"` : '' });
     }
 
@@ -272,11 +275,18 @@ export async function absenden(form) {
     return id ? 'Termin gespeichert.' : 'Termin erfasst.';
   }
 
+  if (name === 'ki-schluessel') {
+    await schluesselSpeichern(text(fd, 'schluessel'));
+    return 'Schlüssel geprüft und in deinem Google Drive gespeichert.';
+  }
+
   if (name === 'dokument') {
     const daten = { titel: pflicht(text(fd, 'titel'), 'Titel'), datum: pflicht(text(fd, 'datum'), 'Datum'), typ: text(fd, 'typ'), kat: pflicht(text(fd, 'kat'), 'Fachbereich'), quelle: text(fd, 'quelle'), arzt: text(fd, 'arzt') || null, erk: text(fd, 'erk') || null, kurz: text(fd, 'kurz') };
     const datei = fd.get('datei');
     const eingangId = form.dataset.eingang;
     let ablage = {};
+    const v = eingangId ? Z.vorschlaege?.[eingangId] : null;
+    if (v?.ki) Object.assign(daten, kiFelder(v));
     if (eingangId) ablage = await ausEingangAblegen(eingangId, daten);
     else if (datei && datei.size) ablage = await dateiHochladen(datei, daten);
     else if (id) {
@@ -284,7 +294,15 @@ export async function absenden(form) {
       const r = await ablageAnpassen(alt, { ...alt, ...daten });
       if (r) ablage = r;
     }
-    aendern(x => { if (id) Object.assign(finde(x, 'dokumente', id), daten, ablage); else x.dokumente.push({ id: neueId('d'), ...daten, ...ablage }); });
+    aendern(x => {
+      if (v) {
+        const neu = neueEintraegeAnlegen(x, { ...v, kat: daten.kat, arzt: daten.arzt, arztNeu: !daten.arzt && fd.get('arztNeu') === 'on' ? v.arztNeu : null, erkNeu: !daten.erk && fd.get('erkNeu') === 'on' ? v.erkNeu : null }, daten.datum);
+        if (neu.arzt) daten.arzt = neu.arzt;
+        if (neu.erk) daten.erk = neu.erk;
+      }
+      if (id) Object.assign(finde(x, 'dokumente', id), daten, ablage); else x.dokumente.push({ id: neueId('d'), ...daten, ...ablage });
+    });
+    if (eingangId) delete Z.vorschlaege[eingangId];
     return eingangId ? 'Eingeordnet und in Drive abgelegt.' : ablage.driveId ? 'Dokument in Drive abgelegt.' : 'Dokument gespeichert.';
   }
 
@@ -318,11 +336,21 @@ export async function absenden(form) {
 export async function vorschlagUebernehmen(dateiId) {
   const v = Z.vorschlaege?.[dateiId];
   if (!v?.kat) throw new Error('Für diese Datei fehlt der Fachbereich. Bitte „Einordnen“ wählen.');
-  const daten = { titel: v.titel, datum: v.datum, typ: v.typ, kat: v.kat, quelle: v.quelle, arzt: v.arzt || null, erk: v.erk || null, kurz: '' };
+  const daten = { titel: v.titel, datum: v.datum, typ: v.typ, kat: v.kat, quelle: v.quelle, arzt: v.arzt || null, erk: v.erk || null, kurz: v.kurz || '', ...(v.ki ? kiFelder(v) : {}) };
   const ablage = await ausEingangAblegen(dateiId, daten);
-  aendern(x => { x.dokumente.push({ id: neueId('d'), ...daten, ...ablage }); });
+  const extra = [];
+  aendern(x => {
+    const neu = v.ki ? neueEintraegeAnlegen(x, v, daten.datum) : {};
+    if (neu.arzt && !daten.arzt) { daten.arzt = neu.arzt; if (neu.arztAngelegt) extra.push(`Praxis „${v.arztNeu.name}“ angelegt`); }
+    if (neu.erk && !daten.erk) { daten.erk = neu.erk; if (neu.erkAngelegt) extra.push(`Erkrankung „${v.erkNeu.titel}“ angelegt`); }
+    x.dokumente.push({ id: neueId('d'), ...daten, ...ablage });
+  });
   delete Z.vorschlaege[dateiId];
-  return `„${daten.titel}“ abgelegt unter ${kat(A(), daten.kat).name}.`;
+  return `„${daten.titel}“ abgelegt unter ${kat(A(), daten.kat).name}.${extra.length ? ' ' + extra.join(', ') + '.' : ''}`;
+}
+/** Felder einer Claude-Auswertung, die mit dem Dokument gespeichert werden. */
+function kiFelder(v) {
+  return { werte: v.werte || [], diagnosen: v.diagnosen || [], naechste: v.naechste || [], ki: true, kiModell: v.kiModell, kiStand: heuteIso() };
 }
 
 // ======================================================================

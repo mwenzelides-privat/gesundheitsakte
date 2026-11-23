@@ -5,6 +5,7 @@ import { VERSION, STAND } from './konfig.js';
 import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NAME, WT_LANG, heute, iso } from './hilfen.js';
 import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG, STATUS_ERKRANKUNG, offen, zeitenText } from './modell.js';
 import { personenVorschlaege } from './kalender.js';
+import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand } from './auswertung.js';
 
 const A = () => Z.akte;
 const arzt = id => finde(A(), 'aerzte', id);
@@ -467,14 +468,31 @@ function eingangKarte(f) {
   if (!v) return `<article class="eingang-karte">${kopf}<p class="small muted" style="margin:0">Wird gelesen und erkannt …</p>
     <div class="knoepfe"><button class="btn klein" data-einordnen="${f.id}">Selbst einordnen</button>${ansehen}</div></article>`;
   const fertig = !!v.kat;
+  const laeuft = wirdAusgewertet(f.id);
+  const kiKnopf = !v.ki && !laeuft && Z.modus === 'konto' ? `<button class="btn klein" data-ki-eingang="${f.id}">${svg('ki', 'width="14" height="14"')}Mit Claude auswerten</button>` : '';
   return `<article class="eingang-karte">${kopf}
-    <div class="label" style="display:flex;gap:6px;align-items:center">${svg('ki', 'width="14" height="14"')}Vorschlag</div>
+    <div class="label" style="display:flex;gap:6px;align-items:center">${svg('ki', 'width="14" height="14"')}${v.ki ? 'Auswertung von Claude' : 'Vorschlag (aus Dateiname und Text)'}</div>
     <dl class="vorschlag"><dt>Titel</dt><dd>${esc(v.titel)}</dd><dt>Datum</dt><dd>${datum(v.datum)}</dd><dt>Art</dt><dd>${esc(v.typ)}</dd>
-      <dt>Fach</dt><dd>${v.kat ? chip(v.kat) : '<span class="ohne-datei">unklar</span>'}</dd><dt>Arzt</dt><dd>${ar ? esc(ar.name) : '–'}</dd>${e ? `<dt>Erkrankung</dt><dd>${esc(e.titel)}</dd>` : ''}</dl>
+      <dt>Fach</dt><dd>${v.kat ? chip(v.kat) : '<span class="ohne-datei">unklar</span>'}</dd><dt>Arzt</dt><dd>${ar ? esc(ar.name) : v.arztNeu ? esc(v.arztNeu.name) + ' <span class="muted">(neu)</span>' : '–'}</dd>${e ? `<dt>Erkrankung</dt><dd>${esc(e.titel)}</dd>` : v.erkNeu ? `<dt>Erkrankung</dt><dd>${esc(v.erkNeu.titel)} <span class="muted">(neu)</span></dd>` : ''}</dl>
     <div class="sicherheit"><span>Sicherheit</span><div class="spur"><i style="width:${v.sicherheit}%"></i></div><span class="num">${v.sicherheit} %</span></div>
+    ${v.ki ? kiInhalt(v, true) : ''}
     <p class="small muted" style="margin:0">${esc(v.gruende.join(' · '))}</p>
-    <div class="knoepfe">${fertig ? `<button class="btn primaer klein" data-vorschlag-ok="${f.id}">Übernehmen</button>` : ''}<button class="btn klein${fertig ? '' : ' primaer'}" data-einordnen="${f.id}">${fertig ? 'Ändern' : 'Einordnen'}</button>${ansehen}</div>
+    ${laeuft ? '<p class="small" style="margin:0"><span class="dreher"></span> Claude liest das Dokument …</p>' : ''}
+    ${v.kiFehler && !laeuft ? `<p class="hinweis-text warn" style="margin:0">${esc(v.kiFehler)}</p>` : ''}
+    <div class="knoepfe">${fertig ? `<button class="btn primaer klein" data-vorschlag-ok="${f.id}">Übernehmen</button>` : ''}<button class="btn klein${fertig ? '' : ' primaer'}" data-einordnen="${f.id}">${fertig ? 'Ändern' : 'Einordnen'}</button>${kiKnopf}${ansehen}</div>
   </article>`;
+}
+/** Inhalt einer Claude-Auswertung: Zusammenfassung, neue Einträge, Diagnosen, Werte, nächste Schritte. */
+function kiInhalt(v, kompakt = false) {
+  const auff = (v.werte || []).filter(w => w[4]);
+  return `<div class="ki-inhalt">
+    ${v.kurz ? `<p style="margin:0">${esc(v.kurz)}</p>` : ''}
+    ${v.arztNeu ? `<p class="small" style="margin:0"><b>Neue Praxis:</b> ${esc(v.arztNeu.name)}${v.arztNeu.fach ? ' – ' + esc(v.arztNeu.fach) : ''} <span class="muted">(wird beim Übernehmen angelegt)</span></p>` : ''}
+    ${v.erkNeu ? `<p class="small" style="margin:0"><b>Neue Erkrankung:</b> ${esc(v.erkNeu.titel)}${v.erkNeu.icd ? ` <span class="mono">${esc(v.erkNeu.icd)}</span>` : ''} <span class="muted">(wird beim Übernehmen angelegt)</span></p>` : ''}
+    ${(v.diagnosen || []).length ? `<p class="small" style="margin:0"><b>Diagnosen:</b> ${v.diagnosen.map(d => esc(d.text) + (d.icd ? ` <span class="mono">${esc(d.icd)}</span>` : '')).join(' · ')}</p>` : ''}
+    ${kompakt && (v.werte || []).length ? `<p class="small" style="margin:0"><b>${v.werte.length} Werte</b>${auff.length ? `, auffällig: ${auff.map(w => `<span class="wert-hoch">${esc(w[0])} ${esc(w[1])} ${esc(w[2])}</span>`).join(', ')}` : ', alle im Referenzbereich'}</p>` : ''}
+    ${(v.naechste || []).length ? `<p class="small" style="margin:0"><b>Empfohlen:</b> ${v.naechste.map(esc).join(' · ')}</p>` : ''}
+  </div>`;
 }
 export function docListeZeichnen() {
   const ziel = document.getElementById('doc-liste'); if (!ziel) return;
@@ -624,6 +642,7 @@ export function ansichtEinstellungen() {
           <button class="btn" data-aktion="export">Akte als Datei speichern</button><button class="btn" data-aktion="abmelden-loeschen">Abmelden und Daten von diesem Gerät entfernen</button></div>`
         : `<p class="small" style="margin:0 0 12px">Du siehst Beispieldaten. Nichts davon wird gespeichert.</p><div class="knoepfe">${googleDrive.eingerichtet() || new URLSearchParams(location.search).has('test') ? '<button class="btn primaer" data-aktion="verbinden">Mit Google verbinden</button>' : ''}<button class="btn" data-aktion="begruessung">Zur Startseite</button></div>`}
       </section>
+      ${Z.modus === 'konto' ? kiEinstellungen(a) : ''}
       ${Z.modus === 'konto' ? kalenderEinstellungen(a) : ''}
       <section class="panel"><div class="panel-kopf"><h2>Daten übernehmen</h2></div>
         <p class="small" style="margin:0 0 12px">Ergänzt die Akte um Einträge aus einer Import-Datei (.json), z. B. aus dem OneNote-Gesundheitstagebuch. Vorhandenes wird nicht gelöscht, doppelte Einträge werden übersprungen. Vor der Übernahme siehst du, was hinzukommt.</p>
@@ -634,6 +653,34 @@ export function ansichtEinstellungen() {
       <section class="panel"><div class="panel-kopf"><h2>Über</h2></div><p class="small" style="margin:0">Gesundheitsakte, Version ${VERSION} vom ${STAND}. Die App läuft ohne eigenen Server; alle Daten liegen in deinem Google Drive und zwischengespeichert in diesem Browser.</p></section>
     </div>
   </div>`;
+}
+
+function kiEinstellungen(a) {
+  const e = a.einstellungen || {};
+  const v = e.kiVerbrauch;
+  const offen = offeneDokumente(a).length;
+  const st = stapelStand();
+  const verbunden = Z.drive?.verbunden();
+  const usd = n => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
+  return `<section class="panel"><div class="panel-kopf"><h2>Befund-Auswertung (Claude)</h2></div>
+    <p class="small" style="margin:0 0 12px">Claude liest Befunde, Arztbriefe, Laborberichte und Scans, fasst sie in einfachen Worten zusammen und schlägt Fach, Arzt, Erkrankung, Diagnosen (ICD-10) und Messwerte vor. Dafür wird das jeweilige Dokument an Anthropic übertragen.</p>
+    <dl class="meta-grid">
+      <dt>Schlüssel</dt><dd>${kiBereit() ? 'eingetragen · <button class="link" data-aktion="ki-entfernen">entfernen</button>' : !verbunden ? 'wird beim Verbinden geladen' : kiGeprueft() ? 'noch keiner' : 'wird geprüft …'}</dd>
+      <dt>Modell</dt><dd>Claude Opus 5.5</dd>
+      <dt>Automatisch</dt><dd><label class="schalter"><input type="checkbox" data-ki-automatik ${e.kiAutomatisch === false ? '' : 'checked'}> neue Dateien im Eingang gleich auswerten</label></dd>
+      <dt>Verbrauch</dt><dd>${v ? `${v.anzahl} Auswertungen seit ${datum(v.seit)}, etwa ${usd(kosten(v))}` : 'noch keine Auswertung'}</dd>
+    </dl>
+    ${!kiBereit() && verbunden ? `<form data-form="ki-schluessel" class="feldreihe" novalidate style="margin-top:12px;align-items:end" autocomplete="off">
+      <div class="feld"><label for="ki-schluessel">Claude-API-Schlüssel</label><input id="ki-schluessel" name="schluessel" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></div>
+      <div class="knoepfe"><button class="btn primaer" type="submit">Prüfen und speichern</button></div><p class="formular-fehler" hidden></p>
+    </form>
+    <p class="small muted" style="margin:8px 0 0">Den Schlüssel legst du in der Anthropic Console unter „API Keys“ an (console.anthropic.com, eigenes Konto mit Guthaben). Er wird nur in deinem Google Drive gespeichert (<span class="mono">Gesundheitsakte/claude-zugang.json</span>), nicht in der App und nicht auf GitHub.</p>` : ''}
+    ${kiBereit() ? `<h3 style="margin:14px 0 6px">Vorhandene Dokumente</h3>
+      ${st ? `<p class="small" style="margin:0 0 8px"><span class="dreher"></span> ${st.fertig} von ${st.gesamt} ausgewertet${st.fehler ? `, ${st.fehler} Fehler` : ''} … <button class="link" data-aktion="ki-stopp">anhalten</button></p>`
+        : offen ? `<p class="small" style="margin:0 0 8px">${offen === 1 ? 'Ein Dokument mit Datei ist' : offen + ' Dokumente mit Datei sind'} noch nicht ausgewertet. Kosten etwa 5–15 Cent je Dokument, zusammen also rund ${usd(offen * 0.1)}. Eigene Notizen bleiben als „Eigene Notiz“ erhalten.</p>
+          <button class="btn" data-aktion="ki-stapel">${svg('ki')}${offen === 1 ? 'Jetzt auswerten' : `Alle ${offen} auswerten`}</button>`
+        : '<p class="small muted" style="margin:0">Alle Dokumente mit Datei sind ausgewertet.</p>'}` : ''}
+  </section>`;
 }
 
 function kalenderEinstellungen(a) {
@@ -691,12 +738,15 @@ export function blattDokument(id) {
       ${d.quelle ? `<dt>Quelle</dt><dd>${esc(d.quelle)}</dd>` : ''}
       <dt>Datei</dt><dd class="mono">${d.datei ? esc(d.datei) : d.driveId ? 'in Google Drive' : 'keine Datei hinterlegt'}</dd>
     </dl>
-    ${d.kurz ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? 'Auswertung' : 'Inhalt / Notiz'}</span><p>${esc(d.kurz)}</p></section>` : ''}
+    ${d.kurz || d.ki ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? `Auswertung von Claude${d.kiStand ? ' · ' + datum(d.kiStand) : ''}` : 'Inhalt / Notiz'}</span>${d.ki ? kiInhalt({ ...d, arztNeu: null, erkNeu: null }) : `<p>${esc(d.kurz)}</p>`}</section>` : ''}
+    ${d.notiz ? `<section class="ki"><span class="label">${svg('stift', 'width="14" height="14"')}Eigene Notiz</span><p>${esc(d.notiz)}</p></section>` : ''}
+    ${wirdAusgewertet(d.id) ? '<p class="small"><span class="dreher"></span> Claude liest das Dokument …</p>' : ''}
     ${d.werte?.length ? `<section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Wert</th><th>Ergebnis</th><th>Referenz</th></tr></thead><tbody>
       ${d.werte.map(([n, w, ein, ref, hoch]) => `<tr style="cursor:default"><td>${esc(n)}</td><td class="num ${hoch ? 'wert-hoch' : ''}">${esc(w)} ${esc(ein)}${hoch ? ' ↑' : ''}</td><td class="num muted">${esc(ref)}</td></tr>`).join('')}
     </tbody></table></div></section>` : ''}
     <div class="knoepfe">${link ? `<a class="btn primaer" href="${esc(link)}" target="_blank" rel="noopener">${svg('datei')}In Drive öffnen</a>` : ''}
-      <button class="btn" data-bearbeiten="dokument:${d.id}">${svg('stift')}Bearbeiten</button></div>`;
+      <button class="btn" data-bearbeiten="dokument:${d.id}">${svg('stift')}Bearbeiten</button>
+      ${d.driveId && Z.modus === 'konto' && !wirdAusgewertet(d.id) ? `<button class="btn" data-ki-doc="${d.id}">${svg('ki')}${d.ki ? 'Neu auswerten' : 'Mit Claude auswerten'}</button>` : ''}</div>`;
 }
 export function blattArzt(id) {
   const x = arzt(id); if (!x) return null;

@@ -10,6 +10,8 @@ import { importLesen, importVorschau, importAnwenden } from './import.js';
 import { aendern, dateienVerknuepfen, inEingangHochladen, fachordnerPruefen, dateiInPapierkorb } from './speicher.js';
 import { vorschlaegeErstellen } from './erkennung.js';
 import { vorschlagUebernehmen } from './formulare.js';
+import { schluesselLaden, schluesselEntfernen, schluesselVergessen, eingangAuswerten, eingangAutomatisch, dokumentAuswerten, offeneDokumente, stapelAuswerten, stapelStoppen } from './auswertung.js';
+import { duplikatVon } from './speicher.js';
 
 /** Dateien in den Eingang laden (Ziehen, Auswahl, Teilen) – mit Fortschritt. */
 async function hochladen(dateien) {
@@ -53,8 +55,13 @@ async function geteilteAblegen() {
 function erkennungAnstossen() {
   if (Z.modus !== 'konto' || !drive.verbunden()) return;
   const dateien = [...(Z.eingang || []), ...(Z.unerfasst || [])];
-  if (dateien.length) vorschlaegeErstellen(dateien, () => { if (ansichtId() === 'dokumente' && !$('#ebene form')) zeichnen(); }).catch(e => { if (e?.name === 'AnmeldungNoetig') statusZeichnen(); });
+  const neuZeichnen = () => { if (ansichtId() === 'dokumente' && !$('#ebene form')) zeichnen(); };
+  if (dateien.length) vorschlaegeErstellen(dateien, neuZeichnen)
+    .then(() => eingangAutomatisch(f => !!duplikatVon(f), neuZeichnen))
+    .catch(e => { if (e?.name === 'AnmeldungNoetig') statusZeichnen(); else toast(e.message, 'fehler'); });
 }
+/** Schlüssel für die Befund-Auswertung still aus Drive laden (nach dem Verbinden). */
+function kiStill() { schluesselLaden().then(() => { if (['einstellungen', 'dokumente'].includes(ansichtId()) && !$('#ebene form')) zeichnen(); }).catch(e => console.warn('Claude-Schlüssel:', e)); }
 import { kalenderAbgleichen, kandidatIgnorieren, regelLoeschen, terminIgnorieren, personEntfernen } from './kalender.js';
 import { finde } from './modell.js';
 
@@ -196,7 +203,7 @@ async function verbindenStarten() {
     return;
   }
   if (r.fehler) toast(r.fehler.message, 'fehler');
-  else if (Z.status === 'bereit') { toast(`Verbunden mit ${Z.konto.email}`); kalenderStill(); geteilteAblegen(); }
+  else if (Z.status === 'bereit') { toast(`Verbunden mit ${Z.konto.email}`); kalenderStill(); geteilteAblegen(); kiStill(); }
 }
 function konfliktZeigen() {
   const k = Z.konflikt; if (!k) return;
@@ -214,7 +221,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -236,6 +243,21 @@ document.addEventListener('click', async ev => {
     el.disabled = true;
     try { toast(await vorschlagUebernehmen(d.vorschlagOk)); zeichnen(); } catch (e) { el.disabled = false; toast(e.message, 'fehler'); }
     return;
+  }
+  if (d.kiEingang) {
+    const f = [...(Z.eingang || []), ...(Z.unerfasst || [])].find(x => x.id === d.kiEingang); if (!f) return;
+    try { await eingangAuswerten(f, () => { if (ansichtId() === 'dokumente' && !$('#ebene form')) zeichnen(); }); toast('Ausgewertet. Bitte prüfen und übernehmen.'); }
+    catch (e) { toast(e.message, 'fehler'); if (e.name === 'KeinSchluessel') location.hash = '#einstellungen'; }
+    zeichnen(); return;
+  }
+  if (d.kiDoc) {
+    const id = d.kiDoc;
+    const offenBlatt = () => { if ($('#ebene .blatt') && !$('#ebene form')) blatt(V.blattDokument(id)); };
+    const p = dokumentAuswerten(id);
+    offenBlatt();
+    try { await p; toast('Dokument ausgewertet.'); }
+    catch (e) { toast(e.message, 'fehler'); if (e.name === 'KeinSchluessel') { blattZu(); location.hash = '#einstellungen'; } }
+    offenBlatt(); zeichnen(); return;
   }
   if (d.duplikatWeg) {
     el.disabled = true;
@@ -274,7 +296,7 @@ document.addEventListener('click', async ev => {
     case 'verbinden': return verbindenStarten();
     case 'beispiel': beispielStarten(); location.hash = '#start'; return;
     case 'begruessung': zurBegruessung(); return;
-    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') { toast(`Verbunden mit ${d.email}`); kalenderStill(); geteilteAblegen(); } return;
+    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') { toast(`Verbunden mit ${d.email}`); kalenderStill(); geteilteAblegen(); kiStill(); } return;
     case 'kalender-abgleich': if (!drive.verbunden()) await verbindenStarten(); else await kalenderStill(true); return;
     case 'kalender-freigeben': await verbindenStarten(); return;
     case 'kalender-wahl': {
@@ -289,10 +311,10 @@ document.addEventListener('click', async ev => {
     case 'konflikt': return konfliktZeigen();
     case 'konflikt-eigen': $('#ebene').innerHTML = ''; await konfliktLoesen('eigen'); toast('Stand dieses Geräts gespeichert.'); return;
     case 'konflikt-fremd': $('#ebene').innerHTML = ''; await konfliktLoesen('fremd'); toast('Stand aus Google Drive übernommen.'); return;
-    case 'trennen': trennen(); toast('Verbindung getrennt. Änderungen bleiben auf diesem Gerät, bis du wieder verbindest.'); return;
+    case 'trennen': trennen(); schluesselVergessen(); toast('Verbindung getrennt. Änderungen bleiben auf diesem Gerät, bis du wieder verbindest.'); return;
     case 'abmelden-loeschen':
       if (Z.ungespeichert) { toast('Es gibt noch nicht gespeicherte Änderungen. Bitte zuerst verbinden.', 'fehler'); return; }
-      trennen({ lokalLoeschen: true }); location.hash = '#start'; toast('Abgemeldet. Die Daten auf diesem Gerät sind entfernt, die Akte in Drive bleibt.'); return;
+      trennen({ lokalLoeschen: true }); schluesselVergessen(); location.hash = '#start'; toast('Abgemeldet. Die Daten auf diesem Gerät sind entfernt, die Akte in Drive bleibt.'); return;
     case 'eingang': if (!drive.verbunden()) await verbindenStarten(); else { await eingangLesen(); await fachordnerPruefen(); zeichnen(); } return;
     case 'import-ja': {
       if (!wartenderImport) return;
@@ -307,6 +329,19 @@ document.addEventListener('click', async ev => {
       }
       return;
     }
+    case 'ki-entfernen':
+      try { await schluesselEntfernen(); zeichnen(); toast('Schlüssel entfernt (liegt im Drive-Papierkorb). Widerrufe ihn am besten auch in der Anthropic Console.'); }
+      catch (e) { toast(e.message, 'fehler'); }
+      return;
+    case 'ki-stapel': {
+      const ids = offeneDokumente(Z.akte).map(x => x.id);
+      if (!ids.length) return;
+      const r = await stapelAuswerten(ids, () => { if (ansichtId() === 'einstellungen' && !$('#ebene form')) zeichnen(); });
+      zeichnen();
+      toast(r.abbruch ? `Abgebrochen nach ${r.fertig} Dokumenten: ${r.abbruch}` : `${r.fertig === 1 ? 'Ein Dokument' : r.fertig + ' Dokumente'} ausgewertet${r.fehler ? `, ${r.fehler} nicht lesbar` : ''}.`, r.abbruch ? 'fehler' : '');
+      return;
+    }
+    case 'ki-stopp': stapelStoppen(); toast('Wird nach dem laufenden Dokument angehalten.'); return;
     case 'export': {
       const blob = new Blob([JSON.stringify(Z.akte, null, 1)], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Gesundheitsakte_${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -341,6 +376,7 @@ document.addEventListener('input', ev => {
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
   if (ev.target.id === 'hochladen-datei' && ev.target.files?.length) { const f = [...ev.target.files]; ev.target.value = ''; hochladen(f); return; }
   if (ev.target.id === 'import-datei' && ev.target.files?.[0]) { importDateiGewaehlt(ev.target.files[0]); ev.target.value = ''; return; }
+  if (ev.target.hasAttribute?.('data-ki-automatik')) { const an = ev.target.checked; aendern(x => { x.einstellungen.kiAutomatisch = an; }); toast(an ? 'Neue Dateien im Eingang werden automatisch ausgewertet.' : 'Auswertung nur noch auf Knopfdruck.'); return; }
   if (ev.target.id === 'k-farbe') { const v = $('#k-vorschau'); v.style.setProperty('--h', ev.target.value); }
   if (ev.target.name === 'kurz' && $('#k-vorschau')) $('#k-vorschau').textContent = ev.target.value.toUpperCase() || 'AB';
 });

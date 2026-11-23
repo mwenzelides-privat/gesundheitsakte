@@ -530,3 +530,11 @@ body.blatt-offen { overflow: hidden; }
 .ablage-flaeche svg { width: 28px; height: 28px; color: var(--accent); flex: none; }
 .hinweis-text { margin: 0; font-size: .88rem; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
 .hinweis-text.warn { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+
+/* Iteration 5: Befund-Auswertung */
+.ki-inhalt { display: grid; gap: 6px; }
+.ki-inhalt b { font-weight: 700; }
+.schalter { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.schalter input { width: 18px; height: 18px; accent-color: var(--accent); }
+.dreher { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: drehen .8s linear infinite; vertical-align: -1px; margin-right: 4px; }
+@keyframes drehen { to { transform: rotate(360deg); } }
