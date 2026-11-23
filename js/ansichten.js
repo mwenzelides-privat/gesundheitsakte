@@ -45,7 +45,10 @@ export function ansichtEinrichtung() {
 export function formularProfil(neu) {
   const p = A()?.profil || { kasse: 'Techniker Krankenkasse' };
   return `<form data-form="profil" class="formular" novalidate>
-    <div class="feld"><label for="p-name">Name</label><input id="p-name" name="name" value="${esc(p.name)}" autocomplete="name"></div>
+    <div class="feldreihe">
+      <div class="feld"><label for="p-name">Name</label><input id="p-name" name="name" value="${esc(p.name)}" autocomplete="name"></div>
+      <div class="feld"><label for="p-rufname">Anrede in der App</label><input id="p-rufname" name="rufname" value="${esc(p.rufname || '')}" placeholder="${esc(rufname(p) || 'z. B. Marcus')}" autocomplete="given-name"><span class="hilfe">leer = Vorname ohne Titel</span></div>
+    </div>
     <div class="feldreihe">
       <div class="feld"><label for="p-jahrgang">Jahrgang *</label><input id="p-jahrgang" name="jahrgang" type="number" min="1900" max="${heute().getFullYear()}" inputmode="numeric" value="${esc(p.jahrgang ?? '')}" required></div>
       <div class="feld"><label for="p-geschlecht">Geschlecht *</label><select id="p-geschlecht" name="geschlecht" required>
@@ -113,7 +116,7 @@ export function ansichtStart() {
   const zuletzt = [...a.dokumente].sort(nachDatum).reverse().slice(0, 5);
 
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>Guten Tag${a.profil.name && Z.modus === 'konto' ? ', ' + esc(a.profil.name.split(' ')[0]) : ''}</h1><p>${wtag}${a.profil.jahrgang ? ` · Jahrgang ${a.profil.jahrgang}` : ''}${a.profil.kasse ? ' · ' + esc(a.profil.kasse) : ''}</p></div></div>
+  <div class="kopf"><div><h1>Guten Tag${Z.modus === 'konto' && rufname(a.profil) ? ', ' + esc(rufname(a.profil)) : ''}</h1><p>${wtag}${a.profil.jahrgang ? ` · Jahrgang ${a.profil.jahrgang}` : ''}${a.profil.kasse ? ' · ' + esc(a.profil.kasse) : ''}</p></div></div>
   ${ersteSchritte}
   ${hinweise ? `<section class="hinweise" aria-label="Braucht Aufmerksamkeit">${hinweise}</section>` : ''}
   <div class="grid2">
@@ -136,6 +139,13 @@ export function ansichtStart() {
         ${zuletzt.length ? `<div class="liste">${zuletzt.map(docZeile).join('')}</div>` : leer('Noch keine Dokumente.', 'dokument', 'Dokument ablegen')}</section>
     </div>
   </div>`;
+}
+
+/** Anrede: eingetragener Rufname, sonst erster Vorname ohne Titel („Dr. med. Marcus W.“ → „Marcus“). */
+const TITEL = /^(dr|prof|med|dent|rer|nat|phil|jur|dipl|ing|mag|msc|bsc|ma|ba|herr|frau)\.?(-[a-z]+\.?)*$/i;
+export function rufname(p) {
+  if (p?.rufname?.trim()) return p.rufname.trim();
+  return String(p?.name || '').split(/\s+/).find(w => w && !TITEL.test(w)) || '';
 }
 
 export function terminZeile(t) {
@@ -510,7 +520,7 @@ export function ansichtEinstellungen() {
   <div class="grid2">
     <div class="stack">
       <section class="panel"><div class="panel-kopf"><h2>Profil</h2><button class="link" data-bearbeiten="profil:">Bearbeiten</button></div>
-        <dl class="meta-grid"><dt>Name</dt><dd>${esc(p.name || '–')}</dd><dt>Jahrgang</dt><dd>${esc(p.jahrgang || '–')}</dd><dt>Geschlecht</dt><dd>${esc(p.geschlecht || '–')}</dd><dt>Krankenkasse</dt><dd>${esc(p.kasse || '–')}</dd></dl></section>
+        <dl class="meta-grid"><dt>Name</dt><dd>${esc(p.name || '–')}</dd><dt>Anrede</dt><dd>${esc(rufname(p) || '–')}</dd><dt>Jahrgang</dt><dd>${esc(p.jahrgang || '–')}</dd><dt>Geschlecht</dt><dd>${esc(p.geschlecht || '–')}</dd><dt>Krankenkasse</dt><dd>${esc(p.kasse || '–')}</dd></dl></section>
       <section class="panel"><div class="panel-kopf"><h2>Fachbereiche</h2>${neuKnopf('kategorie', 'Neu')}</div>
         <div class="liste">${a.kategorien.map(k => `<button class="zeile" data-bearbeiten="kategorie:${k.id}" style="align-items:center">${mark(k.id)}<div class="grow"><div class="t">${esc(k.name)}</div>
           <div class="s">${a.aerzte.filter(x => x.kat === k.id).length} Ärzte · ${a.erkrankungen.filter(x => x.kat === k.id).length} Erkrankungen · ${a.dokumente.filter(x => x.kat === k.id).length} Dokumente${k.kein_fach ? ' · nur für Dokumente' : ''}</div></div></button>`).join('')}</div></section>

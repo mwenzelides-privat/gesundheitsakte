@@ -181,7 +181,7 @@ export async function absenden(form) {
     const jahrgang = Number(text(fd, 'jahrgang'));
     if (!jahrgang || jahrgang < 1900 || jahrgang > new Date().getFullYear()) throw new Error('Bitte einen gültigen Jahrgang eintragen, z. B. 1974.');
     const geschlecht = pflicht(text(fd, 'geschlecht'), 'Geschlecht');
-    const profil = { name: text(fd, 'name'), jahrgang, geschlecht, kasse: text(fd, 'kasse') };
+    const profil = { name: text(fd, 'name'), rufname: text(fd, 'rufname'), jahrgang, geschlecht, kasse: text(fd, 'kasse') };
     if (!a) { akteAnlegen(profil); return 'Akte angelegt.'; }
     let neu = 0;
     aendern(x => { Object.assign(x.profil, profil); neu = vorsorgeAbgleichen(x); });
