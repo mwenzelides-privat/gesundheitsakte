@@ -120,8 +120,9 @@ export function formular(typ, id, vorgaben = {}) {
     }
 
     case 'dokument': {
-      const d = finde(a, 'dokumente', id) || { datum: heuteIso(), typ: 'Befund', kat: vorgaben.kat || '', quelle: vorgaben.quelle || 'Scan' };
-      const eingangsDatei = vorgaben.eingang ? (Z.eingang || []).find(f => f.id === vorgaben.eingang) : null;
+      const eingangsDatei = vorgaben.eingang ? [...(Z.eingang || []), ...(Z.unerfasst || [])].find(f => f.id === vorgaben.eingang) : null;
+      const vorschlag = eingangsDatei ? Z.vorschlaege?.[eingangsDatei.id] : null;
+      const d = finde(a, 'dokumente', id) || (vorschlag ? { ...vorschlag, kat: vorschlag.kat || '' } : { datum: heuteIso(), typ: 'Befund', kat: vorgaben.kat || '', quelle: vorgaben.quelle || 'Scan' });
       let datei = '';
       if (eingangsDatei) datei = `<div class="datei-info">${svg('datei')}<div><div class="mono">${esc(eingangsDatei.name)}</div><div class="small muted">aus dem Eingang · wird umbenannt und in den Ordner des Fachbereichs verschoben</div></div></div>`;
       else if (!id && Z.modus === 'konto') datei = feld({ name: 'datei', label: 'Datei (PDF oder Foto)', typ: 'file', attr: 'accept="application/pdf,image/*"', hilfe: 'Optional. Am Handy kannst du hier direkt fotografieren.' });
@@ -311,6 +312,17 @@ export async function absenden(form) {
     return 'Fachbereich gespeichert.';
   }
   throw new Error('Unbekanntes Formular.');
+}
+
+/** Ein-Klick-Übernahme eines Erkennungsvorschlags aus dem Eingang. */
+export async function vorschlagUebernehmen(dateiId) {
+  const v = Z.vorschlaege?.[dateiId];
+  if (!v?.kat) throw new Error('Für diese Datei fehlt der Fachbereich. Bitte „Einordnen“ wählen.');
+  const daten = { titel: v.titel, datum: v.datum, typ: v.typ, kat: v.kat, quelle: v.quelle, arzt: v.arzt || null, erk: v.erk || null, kurz: '' };
+  const ablage = await ausEingangAblegen(dateiId, daten);
+  aendern(x => { x.dokumente.push({ id: neueId('d'), ...daten, ...ablage }); });
+  delete Z.vorschlaege[dateiId];
+  return `„${daten.titel}“ abgelegt unter ${kat(A(), daten.kat).name}.`;
 }
 
 // ======================================================================

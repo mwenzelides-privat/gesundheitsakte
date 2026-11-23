@@ -520,3 +520,13 @@ body.blatt-offen { overflow: hidden; }
 /* Programmsymbol (gleiches Grün wie die anderen eigenen Programme) */
 .brand-icon { width: 36px; height: 36px; flex: none; border-radius: 9px; display: block; }
 .brand-icon.klein { width: 28px; height: 28px; border-radius: 7px; }
+
+/* Iteration 4: Dokumenten-Eingang */
+.ablage-flaeche {
+  display: flex; gap: 14px; align-items: center; padding: 16px 18px; border: 2px dashed var(--line); border-radius: var(--r);
+  background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.ablage-flaeche:hover, .ablage-flaeche:focus-visible, .ablage-flaeche.aktiv { border-color: var(--accent); background: var(--accent-soft); }
+.ablage-flaeche svg { width: 28px; height: 28px; color: var(--accent); flex: none; }
+.hinweis-text { margin: 0; font-size: .88rem; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+.hinweis-text.warn { background: var(--warn-soft); color: var(--warn); font-weight: 700; }

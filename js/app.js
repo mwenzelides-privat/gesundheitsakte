@@ -7,7 +7,54 @@ import * as V from './ansichten.js';
 import { formular, absenden, loeschFrage, loeschSperre, loeschen } from './formulare.js';
 import { vorsorgeLage } from './modell.js';
 import { importLesen, importVorschau, importAnwenden } from './import.js';
-import { aendern, dateienVerknuepfen } from './speicher.js';
+import { aendern, dateienVerknuepfen, inEingangHochladen, fachordnerPruefen, dateiInPapierkorb } from './speicher.js';
+import { vorschlaegeErstellen } from './erkennung.js';
+import { vorschlagUebernehmen } from './formulare.js';
+
+/** Dateien in den Eingang laden (Ziehen, Auswahl, Teilen) – mit Fortschritt. */
+async function hochladen(dateien) {
+  if (!dateien?.length) return;
+  if (Z.modus !== 'konto') { toast('Im Beispielmodus werden keine Dateien gespeichert.', 'fehler'); return; }
+  if (!drive.verbunden()) { toast('Bitte zuerst verbinden, dann die Dateien erneut ablegen.', 'fehler'); return; }
+  try {
+    const n = await inEingangHochladen([...dateien], text => toast(text));
+    toast(`${n} ${n === 1 ? 'Datei' : 'Dateien'} im Eingang. Die Erkennung läuft …`);
+    if (location.hash !== '#dokumente') location.hash = '#dokumente'; else zeichnen();
+  } catch (e) { toast(e.message, 'fehler'); }
+}
+// ---------- Vom Handy geteilte Dateien (Service Worker legt sie in einen Zwischenspeicher) ----------
+const GETEILT = 'gesundheitsakte-geteilt';
+async function geteilteLesen() {
+  if (!('caches' in window)) return [];
+  const cache = await caches.open(GETEILT);
+  const schluessel = await cache.keys();
+  return Promise.all(schluessel.map(async k => {
+    const r = await cache.match(k);
+    const blob = await r.blob();
+    return { schluessel: k, datei: new File([blob], decodeURIComponent(r.headers.get('X-Dateiname') || 'Datei'), { type: blob.type }) };
+  }));
+}
+async function geteilteAblegen() {
+  const liste = await geteilteLesen();
+  Z.geteiltWartend = liste.length;
+  if (!liste.length) return;
+  if (Z.modus !== 'konto' || !drive.verbunden()) { zeichnen(); return; }   // Hinweis mit „Verbinden“ wird angezeigt
+  try {
+    await inEingangHochladen(liste.map(x => x.datei), text => toast(text));
+    const cache = await caches.open(GETEILT);
+    for (const x of liste) await cache.delete(x.schluessel);
+    Z.geteiltWartend = 0;
+    toast(`${liste.length} geteilte ${liste.length === 1 ? 'Datei liegt' : 'Dateien liegen'} im Eingang.`);
+    location.hash = '#dokumente'; zeichnen();
+  } catch (e) { toast(e.message, 'fehler'); }
+}
+
+/** Erkennung für Eingang und unerfasste Dateien anstoßen (läuft im Hintergrund, zeichnet nach jeder Datei neu). */
+function erkennungAnstossen() {
+  if (Z.modus !== 'konto' || !drive.verbunden()) return;
+  const dateien = [...(Z.eingang || []), ...(Z.unerfasst || [])];
+  if (dateien.length) vorschlaegeErstellen(dateien, () => { if (ansichtId() === 'dokumente' && !$('#ebene form')) zeichnen(); }).catch(e => { if (e?.name === 'AnmeldungNoetig') statusZeichnen(); });
+}
 import { kalenderAbgleichen, kandidatIgnorieren, regelLoeschen, terminIgnorieren, personEntfernen } from './kalender.js';
 import { finde } from './modell.js';
 
@@ -105,7 +152,7 @@ export function zeichnen() {
   else if (!Z.akte) inhalt.innerHTML = Z.status === 'verbinde' ? '<div class="laden">Verbinde mit Google Drive …</div>' : V.ansichtEinrichtung();
   else if (id.startsWith('fach-')) inhalt.innerHTML = V.ansichtFach(id.slice(5));
   else inhalt.innerHTML = ({ start: V.ansichtStart, verlauf: V.ansichtVerlauf, faecher: V.ansichtFaecher, termine: V.ansichtTermine, dokumente: V.ansichtDokumente, vorsorge: V.ansichtVorsorge, aerzte: V.ansichtAerzte, tk: V.ansichtTK, einstellungen: V.ansichtEinstellungen, mehr: V.ansichtMehr })[id]();
-  if (id === 'dokumente') V.docListeZeichnen();
+  if (id === 'dokumente') { V.docListeZeichnen(); setTimeout(erkennungAnstossen, 50); }
   const lanes = $('.lanes-wrap'); if (lanes) lanes.scrollLeft = lanes.scrollWidth;
   navZeichnen(id); statusZeichnen();
   if (fokus && document.getElementById(fokus) && fokus.startsWith('f-')) { const el = document.getElementById(fokus); el.focus(); if (el.setSelectionRange && el.type === 'search') el.setSelectionRange(el.value.length, el.value.length); }
@@ -149,7 +196,7 @@ async function verbindenStarten() {
     return;
   }
   if (r.fehler) toast(r.fehler.message, 'fehler');
-  else if (Z.status === 'bereit') { toast(`Verbunden mit ${Z.konto.email}`); kalenderStill(); }
+  else if (Z.status === 'bereit') { toast(`Verbunden mit ${Z.konto.email}`); kalenderStill(); geteilteAblegen(); }
 }
 function konfliktZeigen() {
   const k = Z.konflikt; if (!k) return;
@@ -167,7 +214,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -185,6 +232,17 @@ document.addEventListener('click', async ev => {
   if (d.kandidatIgnorieren) { kandidatIgnorieren(d.kandidatIgnorieren); zeichnen(); toast('Wird nicht mehr als Arzttermin vorgeschlagen.'); return; }
   if (d.terminIgnorieren) { const t = finde(Z.akte, 'termine', d.terminIgnorieren); if (t) { terminIgnorieren(t); blattZu(); toast('Aus den Arztterminen entfernt. Der Kalendereintrag bleibt unverändert.'); } return; }
   if (d.regelLoeschen !== undefined) { regelLoeschen(+d.regelLoeschen); zeichnen(); toast('Regel gelöscht.'); return; }
+  if (d.vorschlagOk) {
+    el.disabled = true;
+    try { toast(await vorschlagUebernehmen(d.vorschlagOk)); zeichnen(); } catch (e) { el.disabled = false; toast(e.message, 'fehler'); }
+    return;
+  }
+  if (d.duplikatWeg) {
+    el.disabled = true;
+    try { await dateiInPapierkorb(d.duplikatWeg); Z.eingang = (Z.eingang || []).filter(f => f.id !== d.duplikatWeg); Z.unerfasst = (Z.unerfasst || []).filter(f => f.id !== d.duplikatWeg); zeichnen(); toast('Doppelte Datei liegt im Drive-Papierkorb (30 Tage wiederherstellbar).'); }
+    catch (e) { el.disabled = false; toast(e.message, 'fehler'); }
+    return;
+  }
   if (d.personEntfernen) { personEntfernen(d.personEntfernen); zeichnen(); toast(`${d.personEntfernen} wird wieder berücksichtigt.`); return; }
   if (d.loeschen) {
     const [typ, id] = d.loeschen.split(':');
@@ -216,7 +274,7 @@ document.addEventListener('click', async ev => {
     case 'verbinden': return verbindenStarten();
     case 'beispiel': beispielStarten(); location.hash = '#start'; return;
     case 'begruessung': zurBegruessung(); return;
-    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') { toast(`Verbunden mit ${d.email}`); kalenderStill(); } return;
+    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') { toast(`Verbunden mit ${d.email}`); kalenderStill(); geteilteAblegen(); } return;
     case 'kalender-abgleich': if (!drive.verbunden()) await verbindenStarten(); else await kalenderStill(true); return;
     case 'kalender-freigeben': await verbindenStarten(); return;
     case 'kalender-wahl': {
@@ -235,7 +293,7 @@ document.addEventListener('click', async ev => {
     case 'abmelden-loeschen':
       if (Z.ungespeichert) { toast('Es gibt noch nicht gespeicherte Änderungen. Bitte zuerst verbinden.', 'fehler'); return; }
       trennen({ lokalLoeschen: true }); location.hash = '#start'; toast('Abgemeldet. Die Daten auf diesem Gerät sind entfernt, die Akte in Drive bleibt.'); return;
-    case 'eingang': if (!drive.verbunden()) await verbindenStarten(); else await eingangLesen(); return;
+    case 'eingang': if (!drive.verbunden()) await verbindenStarten(); else { await eingangLesen(); await fachordnerPruefen(); zeichnen(); } return;
     case 'import-ja': {
       if (!wartenderImport) return;
       const d = wartenderImport; wartenderImport = null;
@@ -281,11 +339,24 @@ document.addEventListener('submit', async ev => {
 document.addEventListener('input', ev => {
   const map = { 'f-suche': 'suche', 'f-kat': 'kat', 'f-typ': 'typ', 'f-jahr': 'jahr' };
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
+  if (ev.target.id === 'hochladen-datei' && ev.target.files?.length) { const f = [...ev.target.files]; ev.target.value = ''; hochladen(f); return; }
   if (ev.target.id === 'import-datei' && ev.target.files?.[0]) { importDateiGewaehlt(ev.target.files[0]); ev.target.value = ''; return; }
   if (ev.target.id === 'k-farbe') { const v = $('#k-vorschau'); v.style.setProperty('--h', ev.target.value); }
   if (ev.target.name === 'kurz' && $('#k-vorschau')) $('#k-vorschau').textContent = ev.target.value.toUpperCase() || 'AB';
 });
+// Ziehen und Ablegen von Dateien (auf die Ablagefläche oder irgendwo in die Dokumente-Ansicht)
+document.addEventListener('dragover', ev => {
+  if (![...(ev.dataTransfer?.types || [])].includes('Files')) return;
+  ev.preventDefault(); $('#ablage-flaeche')?.classList.add('aktiv');
+});
+document.addEventListener('dragleave', ev => { if (!ev.relatedTarget) $('#ablage-flaeche')?.classList.remove('aktiv'); });
+document.addEventListener('drop', ev => {
+  if (!ev.dataTransfer?.files?.length) return;
+  ev.preventDefault(); $('#ablage-flaeche')?.classList.remove('aktiv');
+  hochladen([...ev.dataTransfer.files]);
+});
 document.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter' && ev.target.id === 'ablage-flaeche') { $('#hochladen-datei')?.click(); return; }
   if (ev.key === 'Escape' && $('#ebene').innerHTML && !Z.konflikt) blattZu();
   if (ev.key === 'Enter' && ev.target.matches('tr[data-doc]')) blatt(V.blattDokument(ev.target.dataset.doc));
 });
@@ -319,6 +390,8 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // ---------- Start ----------
 if ('serviceWorker' in navigator && !TEST && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service Worker:', e));
 setTimeout(versionPruefen, 1500);
+if (new URLSearchParams(location.search).has('geteilt')) history.replaceState(null, '', location.pathname + (TEST ? '?test' : '') + location.hash);
+geteilteAblegen();
 if (TEST) document.title = 'Gesundheitsakte (Test)';
 $('#version').textContent = 'Version ' + VERSION + (TEST ? ' · Testmodus' : '');
 if (!ausCacheStarten(drive)) Z.modus = 'leer';

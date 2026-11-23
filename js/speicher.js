@@ -24,6 +24,9 @@ export const Z = {
   eingang: null,          // Dateien in 00_Eingang (null = noch nicht gelesen)
   kalender: null,         // { stand, gelesen, kandidaten, fehler } – nur im Speicher, nicht in der Akte
   kalenderNamen: null,    // { kalenderId: Name } nach „Auswählen“
+  unerfasst: null,        // Dateien in Fachordnern ohne Dokument-Eintrag
+  pruefsummen: null,      // md5 → Drive-ID aller abgelegten Dateien (Duplikaterkennung)
+  vorschlaege: {},        // Drive-ID → Erkennungsvorschlag (nur im Speicher)
 };
 
 let beobachter = () => {};
@@ -118,7 +121,7 @@ export async function verbinden(konto) {
     melden();
     if (Z.status === 'bereit' && Z.ungespeichert) await speichernJetzt();
     eingangLesen();
-    dateienVerknuepfen();
+    dateienVerknuepfen().then(() => fachordnerPruefen());
   } catch (e) { fehlerBehandeln(e); melden(); }
 }
 
@@ -269,14 +272,50 @@ export async function dateiHochladen(datei, d) {
   return { driveId: r.id, datei: r.name, link: r.webViewLink || Z.drive.link(r.id) };
 }
 
-/** Datei aus 00_Eingang umbenennen und in den Fachordner verschieben. */
+/** Datei aus dem Eingang (oder unerfasst aus einem Fachordner) umbenennen und in den richtigen Fachordner verschieben. */
 export async function ausEingangAblegen(driveId, d) {
   nurMitDrive();
-  const f = (Z.eingang || []).find(x => x.id === driveId) || await Z.drive.metadaten(driveId);
+  const f = [...(Z.eingang || []), ...(Z.unerfasst || [])].find(x => x.id === driveId) || await Z.drive.metadaten(driveId);
   const ordner = await fachOrdner(d.kat);
-  const r = await Z.drive.verschieben(driveId, ablageName(d, endungVon(f.name)), ordner, Z.ids.eingang);
+  const r = await Z.drive.verschieben(driveId, ablageName(d, endungVon(f.name)), ordner, (f.parents || [])[0] || Z.ids.eingang);
   Z.eingang = (Z.eingang || []).filter(x => x.id !== driveId);
+  Z.unerfasst = (Z.unerfasst || []).filter(x => x.id !== driveId);
+  if (f.md5Checksum) Z.pruefsummen = { ...(Z.pruefsummen || {}), [f.md5Checksum]: r.id };
   return { driveId: r.id, datei: r.name, link: r.webViewLink || Z.drive.link(r.id) };
+}
+
+/** Mehrere Dateien (Ziehen und Ablegen, Mehrfachauswahl, Teilen vom Handy) in den Eingang laden. */
+export async function inEingangHochladen(dateien, melder = () => {}) {
+  nurMitDrive();
+  let n = 0;
+  for (const datei of dateien) {
+    melder(`Lade hoch: ${datei.name} (${++n} von ${dateien.length})`);
+    await Z.drive.dateiAnlegen(datei.name || `Datei-${Date.now()}`, Z.ids.eingang, datei, datei.type || 'application/octet-stream');
+  }
+  await eingangLesen();
+  return n;
+}
+
+/**
+ * Durchsucht die Fachordner und 30_TK: Welche Dateien gehören zu keinem Dokument (z. B. direkt über
+ * Laufwerk G: abgelegt)? Merkt sich dabei die Prüfsummen aller Dateien, um Duplikate im Eingang zu erkennen.
+ */
+export async function fachordnerPruefen() {
+  if (Z.modus !== 'konto' || !Z.drive?.verbunden() || !Z.ids.fachbereiche) return;
+  try {
+    const ordner = [Z.ids.tk, ...(await Z.drive.auflisten(Z.ids.fachbereiche)).filter(f => f.mimeType?.includes('folder')).map(f => f.id)].filter(Boolean);
+    const alle = (await Promise.all(ordner.map(id => Z.drive.auflisten(id)))).flat().filter(f => !f.mimeType?.includes('folder'));
+    const bekannt = new Set(Z.akte.dokumente.map(d => d.driveId).filter(Boolean));
+    Z.pruefsummen = Object.fromEntries(alle.filter(f => f.md5Checksum).map(f => [f.md5Checksum, f.id]));
+    Z.unerfasst = alle.filter(f => !bekannt.has(f.id));
+    melden();
+  } catch (e) { if (istAnmeldefehler(e)) { fehlerBehandeln(e); melden(); } else console.warn('Fachordner:', e); }
+}
+/** Liegt dieselbe Datei (gleiche Prüfsumme) schon abgelegt? Liefert das Dokument oder null. */
+export function duplikatVon(datei) {
+  const id = datei?.md5Checksum && Z.pruefsummen?.[datei.md5Checksum];
+  if (!id || id === datei.id) return null;
+  return Z.akte.dokumente.find(d => d.driveId === id) || { titel: 'eine bereits abgelegte Datei', driveId: id };
 }
 
 /** Abgelegte Datei umbenennen/verschieben, wenn sich Titel, Datum, Art oder Fach ändern. */

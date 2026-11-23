@@ -17,7 +17,7 @@ let kalenderEintraege = [
   ev('k6', '2026-12-22', '10:00', 'Hautarzt Screening'),
 ];
 const neu = (felder) => { const id = 'f' + (++zaehler); const f = { id, version: 1, modifiedTime: new Date().toISOString(), trashed: false, ...felder }; dateien.set(id, f); return f; };
-const meta = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, version: String(f.version), md5Checksum: f.ordner ? undefined : 'md5-' + f.id + '-' + f.version, modifiedTime: f.modifiedTime, parents: [f.eltern], size: String(f.inhalt?.length || 0), webViewLink: '#test-' + f.id });
+const meta = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, version: String(f.version), md5Checksum: f.ordner ? undefined : (f.pruef || 'md5-' + f.id + '-' + f.version), modifiedTime: f.modifiedTime, parents: [f.eltern], size: String(f.roh?.byteLength || f.inhalt?.length || 0), webViewLink: '#test-' + f.id });
 const textVon = async inhalt => typeof inhalt === 'string' ? inhalt : await inhalt.text();
 const pause = async () => { if (!verbunden) throw new AnmeldungNoetig(); await new Promise(r => setTimeout(r, 40)); };
 
@@ -35,7 +35,14 @@ export const testDrive = {
   async auflisten(eltern) { await pause(); return [...dateien.values()].filter(x => !x.trashed && x.eltern === eltern).sort((a, b) => a.name.localeCompare(b.name)).map(meta); },
   async metadaten(id) { await pause(); return meta(dateien.get(id)); },
   async jsonLesen(id) { await pause(); return JSON.parse(dateien.get(id).inhalt); },
-  async dateiAnlegen(name, eltern, inhalt, mimeType) { await pause(); return meta(neu({ name, eltern, mimeType, inhalt: await textVon(inhalt) })); },
+  async dateiInhalt(id) { await pause(); const f = dateien.get(id); return f.roh ? f.roh.slice(0) : new TextEncoder().encode(f.inhalt || '').buffer; },
+  async dateiAnlegen(name, eltern, inhalt, mimeType) {
+    await pause();
+    const roh = typeof inhalt === 'string' ? null : await inhalt.arrayBuffer();
+    const f = neu({ name, eltern, mimeType, inhalt: roh ? '' : inhalt, roh });
+    if (roh) f.pruef = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', roh))).slice(0, 8).map(b => b.toString(16)).join('');
+    return meta(f);
+  },
   async ueberschreiben(id, inhalt) { await pause(); const f = dateien.get(id); f.inhalt = await textVon(inhalt); f.version++; f.modifiedTime = new Date().toISOString(); return meta(f); },
   async kopieren(id, name, eltern) { await pause(); const f = dateien.get(id); return { id: neu({ name, eltern, mimeType: f.mimeType, inhalt: f.inhalt }).id }; },
   async inPapierkorb(id) { await pause(); dateien.get(id).trashed = true; return { id }; },

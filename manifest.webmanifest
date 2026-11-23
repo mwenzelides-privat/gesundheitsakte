@@ -13,6 +13,16 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
     { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "share_target": {
+    "action": "./teilen",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "titel",
+      "text": "text",
+      "files": [{ "name": "dateien", "accept": ["application/pdf", "image/*", ".pdf", ".jpg", ".jpeg", ".png", ".heic"] }]
+    }
+  },
   "shortcuts": [
     { "name": "Dokument ablegen", "url": "./#dokumente" },
     { "name": "Vorsorge", "url": "./#vorsorge" }

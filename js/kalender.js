@@ -9,7 +9,7 @@ import { heuteIso, plusMonate } from './hilfen.js';
 import { katVonTermin } from './modell.js';
 
 // ---------------------------------------------------------------- Erkennung
-const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+export const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/ß/g, 'ss').replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
 const FUELL = new Set(['dr', 'med', 'dent', 'prof', 'praxis', 'fur', 'und', 'der', 'die', 'das', 'frau', 'herr', 'zahnheilkunde', 'klinikum', 'landkreis',
   'gemeinschaftspraxis', 'kreisklinik', 'zentrum', 'brustzentrum', 'kardiologie', 'urologie', 'orthopadie', 'nephrologie', 'radiologie', 'chirurgie',
@@ -20,7 +20,7 @@ const FUELL = new Set(['dr', 'med', 'dent', 'prof', 'praxis', 'fur', 'und', 'der
  * „Dr. med. Bernhard Brandlhuber“ → 'brandlhuber', „Praxis für Zahnheilkunde Adriana Hintermaier“ → 'hintermaier',
  * „KfH-Nierenzentrum Erding“ → 'nierenzentrum', „Kardiologie Erding/Freising (Dres. …)“ → keiner.
  */
-function nachname(a) {
+export function nachname(a) {
   const woerter = norm(String(a.name).replace(/\([^)]*\)/g, ' ')).split(/[^a-z0-9]+/).filter(w => w.length >= 5 && !FUELL.has(w));
   return woerter.at(-1) || null;
 }

@@ -1,5 +1,5 @@
 // Alle Ansichten der App. Jede Funktion liefert HTML für den Inhaltsbereich.
-import { Z, dateiLink } from './speicher.js';
+import { Z, dateiLink, duplikatVon } from './speicher.js';
 import { googleDrive } from './drive.js';
 import { VERSION, STAND } from './konfig.js';
 import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NAME, WT_LANG, heute, iso } from './hilfen.js';
@@ -87,6 +87,9 @@ export function ansichtStart() {
       ${ok ? '' : typ ? `<button class="btn klein" data-neu="${typ}">Erfassen</button>` : '<a class="btn klein" href="#vorsorge">Eintragen</a>'}</div>`).join('')}</div></section>` : '';
 
   const hinweise = [
+    ...(Z.geteiltWartend ? [`<div class="hinweis warn"><span class="hinweis-icon">${svg('hochladen')}</span>
+      <div><div class="t">${Z.geteiltWartend} geteilte ${Z.geteiltWartend === 1 ? 'Datei wartet' : 'Dateien warten'} auf die Ablage</div><div class="s">Nach dem Verbinden landen sie im Eingang.</div></div>
+      <button class="btn klein primaer" data-aktion="verbinden">Verbinden</button></div>`] : []),
     ...(Z.modus === 'konto' && Z.ungespeichert && Z.status !== 'speichert' ? [`<div class="hinweis warn"><span class="hinweis-icon">${svg('wolke_aus')}</span>
       <div><div class="t">Änderungen sind noch nicht in Google Drive gespeichert</div><div class="s">Sie liegen sicher auf diesem Gerät und werden nach dem Verbinden übertragen.</div></div>
       <button class="btn klein primaer" data-aktion="verbinden">Verbinden</button></div>`] : []),
@@ -421,18 +424,25 @@ export function ansichtDokumente() {
   let eingang = '';
   if (Z.modus === 'konto') {
     const e = Z.eingang;
-    eingang = `<section class="stack" style="gap:12px"><div class="panel-kopf" style="margin:0"><h2>Eingang${e ? ` · ${e.length}` : ''}</h2>
-      <button class="link" data-aktion="eingang">${Z.drive?.verbunden() ? 'Neu einlesen' : 'Verbinden und einlesen'}</button></div>
-      ${e === null ? `<p class="muted small">${Z.drive?.verbunden() ? 'Wird gelesen …' : 'Nach dem Verbinden zeigt die App hier die Dateien aus Gesundheitsakte/00_Eingang.'}</p>`
-        : e.length ? `<div class="eingang">${e.map(f => `<article class="eingang-karte">
-          <div class="datei">${svg('datei')}<div style="min-width:0"><div class="mono">${esc(f.name)}</div><div class="small muted">${f.modifiedTime ? 'eingegangen ' + datum(f.modifiedTime.slice(0, 10)) : ''}${f.size ? ' · ' + Math.max(1, Math.round(f.size / 1024)) + ' KB' : ''}</div></div></div>
-          <div class="knoepfe"><button class="btn primaer klein" data-einordnen="${f.id}">Einordnen</button>${f.webViewLink ? `<a class="btn klein" href="${esc(f.webViewLink)}" target="_blank" rel="noopener">Ansehen</a>` : ''}</div>
-          </article>`).join('')}</div>`
-        : `<p class="muted small">Leer. Dateien aus der TK-App oder vom Drive-Scanner landen hier, wenn du sie in <span class="mono">Gesundheitsakte/00_Eingang</span> speicherst. Die automatische Auswertung kommt in Iteration 5.</p>`}
+    const verbunden = Z.drive?.verbunden();
+    eingang = `<section class="stack" style="gap:12px">
+      ${Z.geteiltWartend ? `<p class="hinweis-text warn">${Z.geteiltWartend} geteilte ${Z.geteiltWartend === 1 ? 'Datei wartet' : 'Dateien warten'} – nach dem Verbinden landen sie im Eingang. <button class="link" data-aktion="verbinden">Verbinden</button></p>` : ''}
+      <label class="ablage-flaeche" id="ablage-flaeche" for="hochladen-datei" tabindex="0">
+        ${svg('hochladen')}<span><b>Dateien hierher ziehen</b> oder antippen zum Auswählen<br><span class="small muted">PDFs, Fotos und Scans landen im Eingang und werden dort erkannt. Am Handy geht auch: in der TK-App oder einer anderen App „Teilen“ → „Gesundheit“.</span></span>
+      </label>
+      <input id="hochladen-datei" type="file" multiple accept="application/pdf,image/*" hidden>
+      <div class="panel-kopf" style="margin:0"><h2>Eingang${e ? ` · ${e.length}` : ''}</h2>
+      <button class="link" data-aktion="eingang">${verbunden ? 'Neu einlesen' : 'Verbinden und einlesen'}</button></div>
+      ${e === null ? `<p class="muted small">${verbunden ? 'Wird gelesen …' : 'Nach dem Verbinden zeigt die App hier die Dateien aus 00_Eingang.'}</p>`
+        : e.length ? `<div class="eingang">${e.map(eingangKarte).join('')}</div>`
+        : `<p class="muted small">Leer. Neue Dateien kommen hierher: per Ziehen, aus der TK-App über „Teilen“ oder direkt im Ordner <span class="mono">60 Gesundheit/Gesundheitsakte/00_Eingang</span>.</p>`}
+      ${(Z.unerfasst || []).length ? `<div class="panel-kopf" style="margin:8px 0 0"><h2>In Fachordnern, aber noch nicht erfasst · ${Z.unerfasst.length}</h2></div>
+        <p class="muted small" style="margin:0">Diese Dateien liegen schon in einem Fachordner, haben aber noch keinen Eintrag im Verzeichnis – z. B. direkt über Laufwerk G: abgelegt.</p>
+        <div class="eingang">${Z.unerfasst.slice(0, 30).map(eingangKarte).join('')}</div>` : ''}
     </section>`;
   }
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>Dokumente</h1><p>${a.dokumente.length} Dokumente. Dateien liegen in Google Drive unter <span class="mono">Gesundheitsakte/10_Fachbereiche</span>, sortiert nach Fach.</p></div>${neuKnopf('dokument', 'Dokument ablegen')}</div>
+  <div class="kopf"><div><h1>Dokumente</h1><p>${a.dokumente.length} Dokumente. Dateien liegen in Google Drive unter <span class="mono">60 Gesundheit/Gesundheitsakte/10_Fachbereiche</span>, sortiert nach Fach.</p></div>${neuKnopf('dokument', 'Dokument ablegen')}</div>
   ${eingang}
   <section class="panel stack" style="gap:14px"><div class="panel-kopf" style="margin:0"><h2>Verzeichnis</h2><span class="small muted" id="doc-anzahl"></span></div>
     ${a.dokumente.length ? `<div class="felder">
@@ -442,6 +452,29 @@ export function ansichtDokumente() {
       <div class="feld"><label for="f-jahr">Jahr</label><select id="f-jahr"><option value="">Alle</option>${jahre.map(j => `<option ${docFilter.jahr === j ? 'selected' : ''}>${j}</option>`).join('')}</select></div>
     </div><div id="doc-liste"></div>` : leer('Noch keine Dokumente abgelegt.', 'dokument', 'Erstes Dokument ablegen')}
   </section>`;
+}
+function eingangKarte(f) {
+  const v = Z.vorschlaege?.[f.id];
+  const dup = duplikatVon(f);
+  const ar = v?.arzt ? arzt(v.arzt) : null;
+  const e = v?.erk ? erk(v.erk) : null;
+  const kopf = `<div class="datei">${svg('datei')}<div style="min-width:0"><div class="mono">${esc(f.name)}</div>
+    <div class="small muted">${f.modifiedTime ? datum(f.modifiedTime.slice(0, 10)) : ''}${f.size ? ' · ' + Math.max(1, Math.round(f.size / 1024)) + ' KB' : ''}</div></div></div>`;
+  const ansehen = f.webViewLink ? `<a class="btn klein" href="${esc(f.webViewLink)}" target="_blank" rel="noopener">Ansehen</a>` : '';
+  if (dup) return `<article class="eingang-karte">${kopf}
+    <p class="hinweis-text warn">Diese Datei ist schon abgelegt: „${esc(dup.titel)}“${dup.datum ? ' vom ' + datum(dup.datum) : ''}.</p>
+    <div class="knoepfe"><button class="btn klein gefahr" data-duplikat-weg="${f.id}">Doppelte Datei in den Papierkorb</button>${ansehen}</div></article>`;
+  if (!v) return `<article class="eingang-karte">${kopf}<p class="small muted" style="margin:0">Wird gelesen und erkannt …</p>
+    <div class="knoepfe"><button class="btn klein" data-einordnen="${f.id}">Selbst einordnen</button>${ansehen}</div></article>`;
+  const fertig = !!v.kat;
+  return `<article class="eingang-karte">${kopf}
+    <div class="label" style="display:flex;gap:6px;align-items:center">${svg('ki', 'width="14" height="14"')}Vorschlag</div>
+    <dl class="vorschlag"><dt>Titel</dt><dd>${esc(v.titel)}</dd><dt>Datum</dt><dd>${datum(v.datum)}</dd><dt>Art</dt><dd>${esc(v.typ)}</dd>
+      <dt>Fach</dt><dd>${v.kat ? chip(v.kat) : '<span class="ohne-datei">unklar</span>'}</dd><dt>Arzt</dt><dd>${ar ? esc(ar.name) : '–'}</dd>${e ? `<dt>Erkrankung</dt><dd>${esc(e.titel)}</dd>` : ''}</dl>
+    <div class="sicherheit"><span>Sicherheit</span><div class="spur"><i style="width:${v.sicherheit}%"></i></div><span class="num">${v.sicherheit} %</span></div>
+    <p class="small muted" style="margin:0">${esc(v.gruende.join(' · '))}</p>
+    <div class="knoepfe">${fertig ? `<button class="btn primaer klein" data-vorschlag-ok="${f.id}">Übernehmen</button>` : ''}<button class="btn klein${fertig ? '' : ' primaer'}" data-einordnen="${f.id}">${fertig ? 'Ändern' : 'Einordnen'}</button>${ansehen}</div>
+  </article>`;
 }
 export function docListeZeichnen() {
   const ziel = document.getElementById('doc-liste'); if (!ziel) return;

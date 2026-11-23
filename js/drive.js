@@ -145,6 +145,10 @@ export const googleDrive = {
     return alle;
   },
   metadaten: id => api('GET', API + `files/${id}?fields=${FELDER}`),
+  async dateiInhalt(id) {
+    const r = await api('GET', API + `files/${id}?alt=media`, { roh: true });
+    return r.arrayBuffer();
+  },
   async jsonLesen(id) {
     const r = await api('GET', API + `files/${id}?alt=media`, { roh: true });
     return JSON.parse(await r.text());
