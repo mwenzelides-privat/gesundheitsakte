@@ -93,7 +93,7 @@ export function ansichtStart() {
       const ar = arzt(v.arzt);
       return `<div class="hinweis crit"><span class="hinweis-icon">${svg('vorsorge')}</span>
         <div><div class="t">${esc(v.name)} ist seit ${relativ(v.faellig).replace('vor ', '')} fällig</div>
-        <div class="s">${ar ? `${esc(ar.name)} · Tel. <span class="num">${esc(ar.tel || '–')}</span> · ${esc(offen(ar).text)}` : 'Noch keine Praxis zugeordnet'}</div></div>
+        <div class="s">${ar ? [esc(ar.name), ar.tel ? `Tel. <span class="num">${esc(ar.tel)}</span>` : '', offen(ar).unbekannt ? '' : esc(offen(ar).text)].filter(Boolean).join(' · ') : 'Noch keine Praxis zugeordnet'}</div></div>
         ${ar ? `<button class="btn klein" data-arzt="${ar.id}">Praxis anzeigen</button>` : `<button class="btn klein" data-vorsorge="${v.id}">Zuordnen</button>`}</div>`;
     }),
     ...(unbekannt.length && a.aerzte.length ? [`<div class="hinweis plan"><span class="hinweis-icon">${svg('vorsorge')}</span>
@@ -187,7 +187,7 @@ export function ansichtVerlauf() {
       const l = anteil(tag(e.von)), r = anteil(ende(e));
       return `<button class="bar${e.bis ? '' : ' offen-ende'}" style="left:${l}%;width:${Math.max(r - l, .6)}%" data-erk="${e.id}" title="${esc(e.titel)} (${datum(e.von)}${e.bis ? '–' + datum(e.bis) : ' bis heute'})" aria-label="${esc(e.titel)}"></button>`;
     }).join('');
-    return `<div class="lane-name cat" ${catStyle(k)}><span class="dot" style="background:var(--c)"></span>${esc(kat(a, k).name)}</div><div class="lane cat" ${catStyle(k)}>${bars}</div>`;
+    return `<div class="lane-name cat" ${catStyle(k)} title="${esc(kat(a, k).name)}"><span class="dot" style="background:var(--c)"></span><span>${esc(kat(a, k).name)}</span></div><div class="lane cat" ${catStyle(k)}>${bars}</div>`;
   }).join('');
   const schritt = heute().getFullYear() - startJ > 12 ? 4 : 2;
   let jahrLabels = '';
@@ -207,11 +207,13 @@ export function ansichtVerlauf() {
 export function ereignisKarte(e) {
   const docs = A().dokumente.filter(d => d.erk === e.id);
   const aerzte = (e.aerzte || []).map(arzt).filter(Boolean);
+  const trenner = '<span class="trenner" aria-hidden="true">·</span>';
   return `<article class="ereignis cat" ${catStyle(e.kat)}>
-    <div><div class="t">${esc(e.titel)}</div>
-      <div class="meta"><span>${datum(e.von)}${e.bis ? (e.bis !== e.von ? ' – ' + datum(e.bis) : '') : ' – heute'}</span>
-      ${e.icd ? `<span class="mono">ICD ${esc(e.icd)}</span>` : ''}${aerzte.length ? `<span>${esc(aerzte.map(x => x.name).join(', '))}</span>` : ''}</div></div>
-    <div class="rechts">${chip(e.kat)}<span class="pill st-${e.status}">${STATUS_ERKRANKUNG[e.status]}</span><button class="btn klein" data-bearbeiten="erkrankung:${e.id}">${svg('stift')}Bearbeiten</button></div>
+    <div class="e-kopf"><div class="t">${esc(e.titel)}</div>
+      <button class="icon-btn" data-bearbeiten="erkrankung:${e.id}" aria-label="Bearbeiten" title="Bearbeiten">${svg('stift')}</button></div>
+    <div class="meta">${chip(e.kat)}<span class="pill st-${e.status}">${STATUS_ERKRANKUNG[e.status]}</span>
+      <span>${datum(e.von)}${e.bis ? (e.bis !== e.von ? ' – ' + datum(e.bis) : '') : ' – heute'}</span>
+      ${e.icd ? `${trenner}<span class="mono">ICD ${esc(e.icd)}</span>` : ''}${aerzte.length ? `${trenner}<span>${esc(aerzte.map(x => x.name).join(', '))}</span>` : ''}</div>
     ${e.notiz ? `<p>${esc(e.notiz)}</p>` : ''}
     ${docs.length ? `<div class="docs">${docs.map(d => `<button class="doc-link" data-doc="${d.id}">${svg('datei')}${esc(d.titel)}</button>`).join('')}</div>` : ''}
   </article>`;
@@ -309,7 +311,10 @@ function obergrenze(ref) {
   return zahlen ? parseFloat(zahlen.at(-1).replace(',', '.')) : NaN;
 }
 function spark(werte, grenze) {
-  const W = 600, H = 90, pl = 34, pr = 74, pt = 12, pb = 22;
+  // Zeichenfläche passend zur Bildschirmbreite, damit Schrift nicht verzerrt oder winzig wird
+  const W = window.innerWidth < 860 ? 340 : 620, H = 100, pl = 14, pr = 44, pt = 18, pb = 22;
+  const jahreEindeutig = new Set(werte.map(w => w.d.slice(0, 4))).size === werte.length;
+  const xText = w => jahreEindeutig ? w.d.slice(0, 4) : w.d.slice(5, 7) + '/' + w.d.slice(2, 4);
   const hatGrenze = !isNaN(grenze);
   const max = Math.max(hatGrenze ? grenze : 0, ...werte.map(w => w.w)) * 1.15 || 1;
   const x = i => pl + (i / Math.max(werte.length - 1, 1)) * (W - pl - pr);
@@ -317,13 +322,13 @@ function spark(werte, grenze) {
   const linie = werte.map((w, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(w.w).toFixed(1)}`).join(' ');
   const letzte = werte.at(-1);
   const hoch = w => hatGrenze && w > grenze;
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Werteverlauf">
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Werteverlauf">
     ${hatGrenze ? `<line x1="${pl}" x2="${W - pr}" y1="${y(grenze)}" y2="${y(grenze)}" stroke="var(--crit)" stroke-dasharray="4 4" stroke-width="1"/>
-    <text x="${W - pr + 6}" y="${y(grenze) + 4}" font-size="11" fill="var(--crit)">Grenze ${String(grenze).replace('.', ',')}</text>` : ''}
+    <text x="${pl}" y="${y(grenze) - 5}" font-size="11" fill="var(--crit)">Grenze ${String(grenze).replace('.', ',')}</text>` : ''}
     <path d="${linie} L${x(werte.length - 1)},${H - pb} L${x(0)},${H - pb} Z" fill="var(--accent-soft)"/>
     <path d="${linie}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
     ${werte.map((w, i) => `<circle cx="${x(i)}" cy="${y(w.w)}" r="${i === werte.length - 1 ? 5 : 3.5}" fill="${hoch(w.w) ? 'var(--crit)' : 'var(--accent)'}"/>
-      <text x="${x(i)}" y="${H - 6}" font-size="11" text-anchor="middle" fill="var(--muted)">${werte.length > 5 ? w.d.slice(5, 7) + '/' + w.d.slice(2, 4) : w.d.slice(0, 4)}</text>`).join('')}
+      <text x="${x(i)}" y="${H - 6}" font-size="11" text-anchor="middle" fill="var(--muted)">${xText(w)}</text>`).join('')}
     <text x="${x(werte.length - 1) + 9}" y="${y(letzte.w) + 4}" font-size="12" font-weight="700" fill="${hoch(letzte.w) ? 'var(--crit)' : 'var(--fg)'}">${String(letzte.w).replace('.', ',')}</text>
   </svg>`;
 }

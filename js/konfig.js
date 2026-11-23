@@ -3,7 +3,7 @@
 // Sie ist kein Geheimnis: Sie steht in jeder Web-App öffentlich im Code und funktioniert nur
 // auf den Adressen, die in der Cloud Console als "Autorisierte JavaScript-Quellen" eingetragen sind.
 
-export const VERSION = '0.3.1';
+export const VERSION = '0.3.2';
 export const STAND = '23.11.2026';
 
 // Google-Cloud-Projekt „Gesundheitsakte“ (gesundheitsakte-515315) im privaten Konto, Client „Gesundheitsakte Web“.

@@ -223,8 +223,11 @@ button.zeile:hover .t, a.zeile:hover .t { color: var(--accent); }
 
 /* ---------- Verlauf ---------- */
 .lanes-wrap { overflow-x: auto; }
-.lanes { min-width: 680px; display: grid; grid-template-columns: 150px minmax(0, 1fr); row-gap: 6px; font-size: .82rem; }
-.lane-name { display: flex; align-items: center; gap: 7px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+.lanes { min-width: 680px; display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); row-gap: 6px; font-size: .82rem; }
+.lane-name { display: flex; align-items: center; gap: 7px; font-weight: 700; padding-right: 14px; min-width: 0; max-width: 230px;
+  position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.lane-name .dot { flex: none; }
+.lane-name span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane { position: relative; height: 24px; background: var(--surface-2); border-radius: 5px; }
 .lane .bar {
   position: absolute; top: 4px; height: 16px; border-radius: 4px; background: var(--c); min-width: 6px; cursor: pointer; border: 0; padding: 0;
@@ -238,17 +241,25 @@ button.zeile:hover .t, a.zeile:hover .t { color: var(--accent); }
 .ereignisse { display: flex; flex-direction: column; gap: 10px; border-left: 2px solid var(--line); padding-left: 18px; }
 .ereignis {
   position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px;
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
 }
+.e-kopf { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.e-kopf .t { min-width: 0; overflow-wrap: anywhere; }
+.icon-btn {
+  flex: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer; margin: -4px -6px 0 0;
+}
+.icon-btn:hover { border-color: var(--line); color: var(--accent); background: var(--surface-2); }
+.icon-btn svg { width: 16px; height: 16px; }
+.ereignis .meta .trenner { color: var(--line); }
 .ereignis::before {
   content: ""; position: absolute; left: -26px; top: 18px; width: 12px; height: 12px; border-radius: 50%;
   background: var(--c); border: 3px solid var(--bg);
 }
 .ereignis .t { font-weight: 700; font-size: 1.02rem; }
 .ereignis .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .84rem; color: var(--muted); }
-.ereignis .rechts { text-align: right; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-.ereignis p { margin: 2px 0 0; font-size: .9rem; grid-column: 1 / -1; }
-.ereignis .docs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.ereignis p { margin: 2px 0 0; font-size: .9rem; max-width: 95ch; }
+.ereignis .docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 .doc-link {
   border: 1px solid var(--line); background: var(--surface-2); border-radius: 6px; padding: 3px 8px; font-size: .8rem; cursor: pointer;
   display: inline-flex; gap: 5px; align-items: center;
@@ -288,7 +299,7 @@ tbody tr:hover td { background: var(--surface-2); }
 
 /* ---------- Vorsorge ---------- */
 .vorsorge-zeile {
-  display: grid; grid-template-columns: 6px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 16px; align-items: center;
+  display: grid; grid-template-columns: 6px minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.5fr) 150px; gap: 16px; align-items: center;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px 12px 0; overflow: hidden;
 }
 .vorsorge-zeile .streifen { align-self: stretch; margin: -12px 0; }
@@ -353,7 +364,7 @@ tbody tr:hover td { background: var(--surface-2); }
   background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .9rem; max-width: calc(100% - 32px); box-shadow: var(--shadow);
 }
 
-.spark { width: 100%; height: 90px; display: block; }
+.spark { width: 100%; height: auto; max-height: 130px; display: block; }
 
 /* ---------- Handy ---------- */
 @media (max-width: 860px) {
@@ -390,15 +401,13 @@ tbody tr:hover td { background: var(--surface-2); }
   .doc-karten { display: flex; }
   .jahr-gruppe { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .jahr-gruppe > h2 { padding-top: 0; }
-  .ereignis { grid-template-columns: minmax(0, 1fr); }
-  .ereignis .rechts { text-align: left; align-items: flex-start; flex-direction: row; flex-wrap: wrap; }
   .eingang, .aerzte { grid-template-columns: minmax(0, 1fr); }
   .balken-zeile { grid-template-columns: 100px minmax(0, 1fr) 20px; }
   .hinweis { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; }
   .hinweis-icon { display: none; }
   .hinweis .t { font-size: .95rem; line-height: 1.3; }
   .hinweis .s { font-size: .8rem; }
-  .lanes { grid-template-columns: 112px minmax(0, 1fr); }
+  .lanes { grid-template-columns: minmax(96px, 128px) minmax(0, 1fr); }
   .ampel b { font-size: 1.35rem; }
   .blatt { width: 100%; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
 }
