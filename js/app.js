@@ -8,6 +8,19 @@ import { formular, absenden, loeschFrage, loeschSperre, loeschen } from './formu
 import { vorsorgeLage } from './modell.js';
 import { importLesen, importVorschau, importAnwenden } from './import.js';
 import { aendern, dateienVerknuepfen } from './speicher.js';
+import { kalenderAbgleichen, kandidatIgnorieren, regelLoeschen, terminIgnorieren } from './kalender.js';
+import { finde } from './modell.js';
+
+/** Kalender im Hintergrund abgleichen; meldet nur, wenn sich etwas getan hat (oder wenn ausdrücklich angestoßen). */
+async function kalenderStill(laut = false) {
+  try {
+    const r = await kalenderAbgleichen();
+    zeichnen();
+    if (r.status === 'ok' && (laut || r.neu)) toast(`Kalender abgeglichen: ${r.neu} neue, ${r.geaendert} aktualisierte Arzttermine${r.kandidaten.length ? `, ${r.kandidaten.length} zum Zuordnen` : ''}.`);
+    else if (laut && r.status === 'keinZugriff') toast('Kein Zugriff auf den Google Kalender. Bitte „Zugriff erlauben“ wählen.', 'fehler');
+    else if (laut && r.status === 'fehler') toast(r.fehler, 'fehler');
+  } catch (e) { if (e?.name === 'AnmeldungNoetig') { statusZeichnen(); if (laut) toast(e.message, 'fehler'); } }
+}
 
 let wartenderImport = null;
 async function importDateiGewaehlt(datei) {
@@ -136,7 +149,7 @@ async function verbindenStarten() {
     return;
   }
   if (r.fehler) toast(r.fehler.message, 'fehler');
-  else if (Z.status === 'bereit') toast(`Verbunden mit ${Z.konto.email}`);
+  else if (Z.status === 'bereit') { toast(`Verbunden mit ${Z.konto.email}`); kalenderStill(); }
 }
 function konfliktZeigen() {
   const k = Z.konflikt; if (!k) return;
@@ -154,7 +167,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -168,6 +181,10 @@ document.addEventListener('click', async ev => {
   if (d.bearbeiten) { const [typ, id] = d.bearbeiten.split(':'); return blatt(formular(typ, id)); }
   if (d.erledigt) return blatt(formular('erledigt', d.erledigt));
   if (d.einordnen) return blatt(formular('dokument', null, { eingang: d.einordnen, quelle: 'TK-ePA' }));
+  if (d.kandidat) return blatt(formular('kandidat', d.kandidat));
+  if (d.kandidatIgnorieren) { kandidatIgnorieren(d.kandidatIgnorieren); zeichnen(); toast('Wird nicht mehr als Arzttermin vorgeschlagen.'); return; }
+  if (d.terminIgnorieren) { const t = finde(Z.akte, 'termine', d.terminIgnorieren); if (t) { terminIgnorieren(t); blattZu(); toast('Aus den Arztterminen entfernt. Der Kalendereintrag bleibt unverändert.'); } return; }
+  if (d.regelLoeschen !== undefined) { regelLoeschen(+d.regelLoeschen); zeichnen(); toast('Regel gelöscht.'); return; }
   if (d.loeschen) {
     const [typ, id] = d.loeschen.split(':');
     const form = el.closest('form');
@@ -198,7 +215,17 @@ document.addEventListener('click', async ev => {
     case 'verbinden': return verbindenStarten();
     case 'beispiel': beispielStarten(); location.hash = '#start'; return;
     case 'begruessung': zurBegruessung(); return;
-    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') toast(`Verbunden mit ${d.email}`); return;
+    case 'privat-ja': privatBestaetigen(d.email); blattZu(); await verbinden({ email: d.email, name: d.name }); if (Z.status === 'bereit') { toast(`Verbunden mit ${d.email}`); kalenderStill(); } return;
+    case 'kalender-abgleich': if (!drive.verbunden()) await verbindenStarten(); else await kalenderStill(true); return;
+    case 'kalender-freigeben': await verbindenStarten(); return;
+    case 'kalender-wahl': {
+      try { const liste = await drive.kalenderListe(); Z.kalenderNamen = Object.fromEntries(liste.map(k => [k.id, k.name])); blatt(formular('kalenderwahl', '', { liste })); }
+      catch (e) { toast(e.message, 'fehler'); }
+      return;
+    }
+    case 'kalender-ignoriert-zuruecksetzen':
+      aendern(a => { a.einstellungen.kalenderIgnoriert = []; a.einstellungen.kalenderZuordnung = {}; });
+      await kalenderStill(true); return;
     case 'privat-nein': drive.abmelden(); blattZu(); toast('Abgemeldet. Bitte mit dem privaten Konto anmelden.'); return;
     case 'konflikt': return konfliktZeigen();
     case 'konflikt-eigen': $('#ebene').innerHTML = ''; await konfliktLoesen('eigen'); toast('Stand dieses Geräts gespeichert.'); return;
@@ -263,13 +290,34 @@ document.addEventListener('keydown', ev => {
 });
 window.addEventListener('hashchange', () => { if ($('#ebene').innerHTML && !Z.konflikt) $('#ebene').innerHTML = ''; document.body.classList.remove('blatt-offen'); zeichnen(); });
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible') { if (await aktualisieren()) toast('Neuer Stand von einem anderen Gerät geladen.'); eingangLesen(); }
+  if (document.visibilityState === 'visible') {
+    if (await aktualisieren()) toast('Neuer Stand von einem anderen Gerät geladen.');
+    eingangLesen();
+    if (drive.verbunden() && (!Z.kalender?.stand || Date.now() - Z.kalender.stand > 15 * 60_000)) kalenderStill();
+  }
   else speichernJetzt();
 });
 window.addEventListener('beforeunload', ev => { if (Z.modus === 'konto' && Z.ungespeichert && drive.verbunden()) { speichernJetzt(); ev.preventDefault(); } });
 
+// ---------- Neue Version erkennen ----------
+// Eine installierte App bleibt oft tagelang offen. Beim Start und bei jeder Rückkehr ins Fenster wird geprüft,
+// ob eine neuere Version veröffentlicht ist; dann wird neu geladen, sobald nichts Ungespeichertes offen ist.
+async function versionPruefen() {
+  if (TEST || location.protocol === 'file:') return;
+  try {
+    const text = await (await fetch('js/konfig.js?v=' + Date.now(), { cache: 'no-store' })).text();
+    const online = (text.match(/VERSION = '([^']+)'/) || [])[1];
+    if (!online || online === VERSION) return;
+    const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update();
+    if (!Z.ungespeichert && !$('#ebene form')) location.reload();
+    else toast(`Version ${online} ist verfügbar. Sie wird geladen, sobald alles gespeichert ist.`);
+  } catch { /* offline: egal */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') versionPruefen(); });
+
 // ---------- Start ----------
 if ('serviceWorker' in navigator && !TEST && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service Worker:', e));
+setTimeout(versionPruefen, 1500);
 if (TEST) document.title = 'Gesundheitsakte (Test)';
 $('#version').textContent = 'Version ' + VERSION + (TEST ? ' · Testmodus' : '');
 if (!ausCacheStarten(drive)) Z.modus = 'leer';

@@ -102,6 +102,9 @@ export function ansichtStart() {
     ...((Z.eingang || []).length ? [`<div class="hinweis info"><span class="hinweis-icon">${svg('eingang')}</span>
       <div><div class="t">${Z.eingang.length} ${Z.eingang.length === 1 ? 'Datei' : 'Dateien'} im Eingang</div><div class="s">In Google Drive unter Gesundheitsakte/00_Eingang, noch nicht eingeordnet</div></div>
       <a class="btn klein" href="#dokumente">Einordnen</a></div>`] : []),
+    ...((Z.kalender?.kandidaten || []).length ? [`<div class="hinweis plan"><span class="hinweis-icon">${svg('kalender')}</span>
+      <div><div class="t">${Z.kalender.kandidaten.length} Kalendereinträge könnten Arzttermine sein</div><div class="s">Bitte einem Arzt zuordnen oder als „kein Arzttermin“ markieren</div></div>
+      <a class="btn klein" href="#termine">Ansehen</a></div>`] : []),
     ...geaendert.map(x => `<div class="hinweis warn"><span class="hinweis-icon">${svg('karte')}</span>
       <div><div class="t">Sprechzeiten geändert: ${esc(x.name)}</div>
       <div class="s">${WT_LANG[x.aenderung.tag]} jetzt ${zeitenText(x.zeiten[x.aenderung.tag])} (vorher ${esc(x.aenderung.alt)}) · laut Google Maps am ${datum(x.aenderung.datum)}</div></div>
@@ -154,7 +157,7 @@ export function terminZeile(t) {
   const k = katVonTermin(A(), t);
   return `<button class="zeile" data-termin="${t.id}"><div class="termin-datum"><b class="num">${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
     <div class="grow"><div class="t">${ar ? esc(ar.name) : esc(t.titel)}</div>
-    <div class="s">${WT_LANG[WT[d.getDay()]]}${t.zeit ? `, ${t.zeit} Uhr` : ''}${ar ? ` · „${esc(t.titel)}“` : ''}</div>
+    <div class="s">${WT_LANG[WT[d.getDay()]]}${t.zeit ? `, ${t.zeit} Uhr` : ''}${ar ? ` · „${esc(t.titel)}“` : ''}${t.eventId ? ` <span class="quelle" title="aus Google Kalender">${svg('kalender')}</span>` : ''}</div>
     ${ar?.adresse ? `<div class="s">${esc(ar.adresse)}</div>` : ''}</div>
     ${k ? chip(k) : '<span class="pill st-bald">zuordnen</span>'}</button>`;
 }
@@ -350,7 +353,10 @@ export function ansichtTermine() {
   diesesJahr.forEach(t => { const k = katVonTermin(a, t); if (k) proKat[k] = (proKat[k] || 0) + 1; });
   const maxK = Math.max(1, ...Object.values(proKat));
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>Arzttermine</h1><p>Termine trägst du vorerst selbst ein. Ab Iteration 3 liest die App sie aus deinem Google Kalender und ordnet sie den Ärzten zu.</p></div>${neuKnopf('termin', 'Termin erfassen')}</div>
+  <div class="kopf"><div><h1>Arzttermine</h1><p>Aus deinem Google Kalender übernommen und den Ärzten zugeordnet, dazu selbst erfasste Termine und die aus dem Tagebuch.</p></div>
+    <div class="knoepfe">${Z.modus === 'konto' ? `<button class="btn" data-aktion="kalender-abgleich">${svg('kalender')}Kalender abgleichen</button>` : ''}${neuKnopf('termin', 'Termin erfassen')}</div></div>
+  ${kalenderLeiste()}
+  ${kandidatenPanel()}
   <div class="grid2">
     <div class="stack">
       <div class="filter" role="group" aria-label="Zeitraum">
@@ -365,6 +371,26 @@ export function ansichtTermine() {
         ${Object.keys(proKat).length ? `<div class="balken">${Object.entries(proKat).sort((x, y) => y[1] - x[1]).map(([k, n]) => `<div class="balken-zeile cat" ${catStyle(k)}><span>${esc(kat(a, k).name)}</span><div class="spur"><i style="width:${(n / maxK) * 100}%"></i></div><b class="num">${n}</b></div>`).join('')}</div>` : '<p class="muted small">Noch keine Besuche in diesem Jahr.</p>'}</section>
     </div>
   </div>`;
+}
+
+function kalenderLeiste() {
+  if (Z.modus !== 'konto') return '';
+  const k = Z.kalender;
+  const imKalender = A().termine.filter(t => t.eventId).length;
+  if (!Z.drive?.verbunden()) return `<p class="kalender-leiste">${svg('kalender')}Kalender wird beim nächsten Verbinden abgeglichen.</p>`;
+  if (!Z.drive.kalenderErlaubt?.()) return `<p class="kalender-leiste warn">${svg('kalender')}Kein Zugriff auf den Google Kalender. <button class="link" data-aktion="kalender-freigeben">Zugriff erlauben</button></p>`;
+  if (k?.fehler) return `<p class="kalender-leiste warn">${svg('kalender')}Kalender konnte nicht gelesen werden: ${esc(k.fehler)}</p>`;
+  if (!k?.stand) return `<p class="kalender-leiste">${svg('kalender')}Kalender wird gelesen …</p>`;
+  return `<p class="kalender-leiste">${svg('kalender')}Google Kalender abgeglichen um ${k.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${k.gelesen} Einträge gelesen · ${imKalender} Arzttermine verknüpft</p>`;
+}
+function kandidatenPanel() {
+  const liste = (Z.kalender?.kandidaten || []).slice().sort((x, y) => y.datum.localeCompare(x.datum));
+  if (!liste.length) return '';
+  return `<section class="panel"><div class="panel-kopf"><h2>Im Kalender gefunden, noch nicht zugeordnet · ${liste.length}</h2><span class="small muted">Klingt nach Arzttermin, Arzt unklar</span></div>
+    <div class="liste">${liste.slice(0, 12).map(c => `<div class="zeile" style="align-items:center"><div class="termin-datum"><b class="num">${+c.datum.slice(8)}</b><span>${MON[+c.datum.slice(5, 7) - 1]} ${c.datum.slice(2, 4)}</span></div>
+      <div class="grow"><div class="t">${esc(c.titel)}</div><div class="s">${c.zeit ? c.zeit + ' Uhr' : 'ganztägig'}${c.ort ? ' · ' + esc(c.ort) : ''}</div></div>
+      <div class="knoepfe"><button class="btn klein primaer" data-kandidat="${esc(c.id)}">Zuordnen</button><button class="btn klein" data-kandidat-ignorieren="${esc(c.id)}">Kein Arzttermin</button></div></div>`).join('')}</div>
+    ${liste.length > 12 ? `<p class="small muted" style="margin:10px 0 0">… und ${liste.length - 12} weitere. Nach dem Zuordnen erscheinen die nächsten.</p>` : ''}</section>`;
 }
 
 // ======================================================================
@@ -501,7 +527,7 @@ export function ansichtTK() {
   const verb = [
     ['Google-Konto (privat)', Z.konto ? esc(Z.konto.email) : 'Anmeldung, nur du hast Zugriff', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
     ['Google Drive', 'Ablage und Datenbestand akte.json', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
-    ['Google Kalender', 'Arzttermine lesen, Erinnerungen schreiben', 3],
+    ['Google Kalender', 'Arzttermine lesen (Erinnerungen schreiben ab Iteration 7)', Z.modus === 'konto' ? (Z.drive?.kalenderErlaubt?.() ? 'ok' : 'getrennt') : 3],
     ['Befund-Auswertung (Claude)', 'Dokumente lesen, Kurzfassung, Werte, Einordnung', 5],
     ['Google Maps', 'Adressen, Telefon, Sprechzeiten', 8],
     ['Hintergrunddienst (Apps Script)', 'nachts: Eingang, Maps-Abgleich, Erinnerungen', 9],
@@ -549,6 +575,7 @@ export function ansichtEinstellungen() {
           <button class="btn" data-aktion="export">Akte als Datei speichern</button><button class="btn" data-aktion="abmelden-loeschen">Abmelden und Daten von diesem Gerät entfernen</button></div>`
         : `<p class="small" style="margin:0 0 12px">Du siehst Beispieldaten. Nichts davon wird gespeichert.</p><div class="knoepfe">${googleDrive.eingerichtet() || new URLSearchParams(location.search).has('test') ? '<button class="btn primaer" data-aktion="verbinden">Mit Google verbinden</button>' : ''}<button class="btn" data-aktion="begruessung">Zur Startseite</button></div>`}
       </section>
+      ${Z.modus === 'konto' ? kalenderEinstellungen(a) : ''}
       <section class="panel"><div class="panel-kopf"><h2>Daten übernehmen</h2></div>
         <p class="small" style="margin:0 0 12px">Ergänzt die Akte um Einträge aus einer Import-Datei (.json), z. B. aus dem OneNote-Gesundheitstagebuch. Vorhandenes wird nicht gelöscht, doppelte Einträge werden übersprungen. Vor der Übernahme siehst du, was hinzukommt.</p>
         <label class="btn" for="import-datei">${svg('hochladen')}Import-Datei wählen …</label>
@@ -560,7 +587,26 @@ export function ansichtEinstellungen() {
   </div>`;
 }
 
-export const MEHR_ZIELE = ['dokumente', 'vorsorge', 'aerzte', 'tk', 'einstellungen'];
+function kalenderEinstellungen(a) {
+  const e = a.einstellungen || {};
+  const erlaubt = Z.drive?.kalenderErlaubt?.();
+  const kal = e.kalender?.length ? e.kalender : ['primary'];
+  const namen = Z.kalenderNamen || {};
+  return `<section class="panel"><div class="panel-kopf"><h2>Google Kalender</h2>${erlaubt ? '<button class="link" data-aktion="kalender-abgleich">Jetzt abgleichen</button>' : ''}</div>
+    <dl class="meta-grid">
+      <dt>Zugriff</dt><dd>${erlaubt ? 'nur lesen, erlaubt' : Z.drive?.verbunden() ? 'nicht erlaubt · <button class="link" data-aktion="kalender-freigeben">Zugriff erlauben</button>' : 'beim nächsten Verbinden'}</dd>
+      <dt>Kalender</dt><dd>${kal.map(id => esc(namen[id] || (id === 'primary' ? 'Hauptkalender' : id))).join(', ')}${erlaubt ? ' · <button class="link" data-aktion="kalender-wahl">Auswählen</button>' : ''}</dd>
+      <dt>Zeitraum</dt><dd>ab 2021 bis 2 Jahre voraus</dd>
+      ${Z.kalender?.stand ? `<dt>Zuletzt</dt><dd>${Z.kalender.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr, ${Z.kalender.gelesen} Einträge gelesen</dd>` : ''}
+      <dt>Ignoriert</dt><dd>${(e.kalenderIgnoriert || []).length} Einträge${(e.kalenderIgnoriert || []).length ? ' · <button class="link" data-aktion="kalender-ignoriert-zuruecksetzen">zurücksetzen</button>' : ''}</dd>
+    </dl>
+    ${(e.kalenderRegeln || []).length ? `<h3 style="margin:14px 0 6px">Eigene Zuordnungsregeln</h3><div class="liste">${e.kalenderRegeln.map((r, i) => `<div class="zeile" style="align-items:center"><div class="grow"><div class="t">„${esc(r.stichwort)}“</div>
+      <div class="s">→ ${esc(r.arzt ? (arzt(r.arzt)?.name || 'gelöschter Arzt') : kat(a, r.kat).name)}</div></div><button class="btn klein" data-regel-loeschen="${i}">Löschen</button></div>`).join('')}</div>` : ''}
+    <p class="small muted" style="margin:12px 0 0">Gespeichert werden nur Einträge, die als Arzttermin erkannt werden: am Arztnamen, an Stichwörtern wie „Zahnarzt“ oder „Physio“ oder an deinen Regeln. Alles andere bleibt nur im Kalender.</p>
+  </section>`;
+}
+
+export const MEHR_ZIELE =['dokumente', 'vorsorge', 'aerzte', 'tk', 'einstellungen'];
 export const NAV = [
   ['start', 'Übersicht'], ['verlauf', 'Krankheitsverlauf'], ['faecher', 'Fachbereiche'], ['termine', 'Termine'],
   ['dokumente', 'Dokumente'], ['vorsorge', 'Vorsorge'], ['aerzte', 'Ärzte'], ['tk', 'TK und Import'], ['einstellungen', 'Einstellungen'],
@@ -614,7 +660,10 @@ export function blattTermin(id) {
   return `${blattKopf('Termin', t.titel)}
     <dl class="meta-grid"><dt>Wann</dt><dd>${WT_LANG[WT[d.getDay()]]}, ${datum(t.datum)}${t.zeit ? `, ${t.zeit} Uhr` : ''} · ${relativ(t.datum)}</dd>
       <dt>Arzt</dt><dd>${ar ? esc(ar.name) : 'nicht zugeordnet'}</dd><dt>Fach</dt><dd>${k ? chip(k) : '–'}</dd>
-      ${t.notiz ? `<dt>Notiz</dt><dd>${esc(t.notiz)}</dd>` : ''}<dt>Quelle</dt><dd>${t.quelle === 'kalender' ? 'Google Kalender' : 'selbst erfasst'}</dd></dl>
+      ${t.ort ? `<dt>Ort</dt><dd>${esc(t.ort)}</dd>` : ''}
+      ${t.notiz ? `<dt>Notiz</dt><dd>${esc(t.notiz)}</dd>` : ''}<dt>Quelle</dt><dd>${t.quelle === 'kalender' ? 'Google Kalender' : t.quelle === 'import' ? 'Gesundheitstagebuch' + (t.eventId ? ', mit Kalendereintrag verknüpft' : '') : 'selbst erfasst' + (t.eventId ? ', mit Kalendereintrag verknüpft' : '')}</dd></dl>
     ${ar ? arztKarte(ar, false) : ''}
-    <div class="knoepfe"><button class="btn primaer" data-bearbeiten="termin:${t.id}">${svg('stift')}Bearbeiten</button></div>`;
+    <div class="knoepfe"><button class="btn primaer" data-bearbeiten="termin:${t.id}">${svg('stift')}${t.quelle === 'kalender' ? 'Arzt oder Fach ändern' : 'Bearbeiten'}</button>
+      ${t.link && !t.link.startsWith('#') ? `<a class="btn" href="${esc(t.link)}" target="_blank" rel="noopener">${svg('kalender')}Im Kalender öffnen</a>` : ''}
+      ${t.quelle === 'kalender' ? `<button class="btn gefahr" data-termin-ignorieren="${t.id}">Kein Arzttermin</button>` : ''}</div>`;
 }

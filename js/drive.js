@@ -1,7 +1,10 @@
 // Google-Anmeldung (Google Identity Services) und Zugriff auf Google Drive (REST v3).
 // Die App läuft ohne eigenen Server: Der Browser holt sich ein Zugriffstoken (1 Stunde gültig)
 // und spricht damit direkt mit Drive. Gesundheitsdaten verlassen dein Google-Konto nicht.
-import { GOOGLE_CLIENT_ID, SCOPES } from './konfig.js';
+import { GOOGLE_CLIENT_ID, SCOPES, SCOPE_DRIVE, SCOPE_KALENDER } from './konfig.js';
+
+const KAL = 'https://www.googleapis.com/calendar/v3/';
+let kalenderOk = false;
 
 const API = 'https://www.googleapis.com/drive/v3/';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
@@ -39,7 +42,7 @@ async function api(methode, url, { body, headers, roh } = {}) {
   if (!r.ok) {
     let text = '';
     try { text = (await r.json()).error?.message || ''; } catch { /* leer */ }
-    throw new Error(`Google Drive meldet Fehler ${r.status}${text ? ': ' + text : ''}`);
+    throw new Error(`Google ${url.startsWith(KAL) ? 'Kalender' : 'Drive'} meldet Fehler ${r.status}${text ? ': ' + text : ''}`);
   }
   if (roh) return r;
   return r.status === 204 ? null : r.json();
@@ -67,10 +70,11 @@ export const googleDrive = {
     await gisBereit();
     return new Promise((ok, fehler) => {
       const client = window.google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID, scope: SCOPES, hint: hinweisEmail || undefined,
+        client_id: GOOGLE_CLIENT_ID, scope: SCOPES, hint: hinweisEmail || undefined, include_granted_scopes: true,
         callback: antwort => {
           if (antwort.error) return fehler(new Error('Anmeldung abgebrochen: ' + antwort.error));
-          if (!window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPES)) return fehler(new Error('Ohne Zugriff auf Google Drive kann die Akte nicht gespeichert werden. Bitte bei der Anmeldung den Haken für Drive setzen.'));
+          if (!window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPE_DRIVE)) return fehler(new Error('Ohne Zugriff auf Google Drive kann die Akte nicht gespeichert werden. Bitte bei der Anmeldung den Haken für Drive setzen.'));
+          kalenderOk = window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPE_KALENDER);
           token = antwort.access_token;
           tokenAblauf = Date.now() + (Number(antwort.expires_in) || 3600) * 1000;
           ok();
@@ -82,7 +86,29 @@ export const googleDrive = {
   },
   abmelden() {
     if (token && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(token, () => {});
-    token = null; tokenAblauf = 0;
+    token = null; tokenAblauf = 0; kalenderOk = false;
+  },
+
+  // ---------- Google Kalender (nur lesen) ----------
+  kalenderErlaubt: () => kalenderOk && !!token,
+  async kalenderListe() {
+    const r = await api('GET', KAL + 'users/me/calendarList?minAccessRole=reader&fields=items(id,summary,primary,backgroundColor)');
+    return (r.items || []).map(k => ({ id: k.primary ? 'primary' : k.id, name: k.summary, primaer: !!k.primary, farbe: k.backgroundColor }));
+  },
+  /** Alle Termine eines Kalenders im Zeitraum (Serien aufgelöst). von/bis als 'JJJJ-MM-TT'. */
+  async kalenderTermine(kalenderId, von, bis) {
+    const alle = [];
+    let seite = '';
+    do {
+      const r = await api('GET', KAL + `calendars/${encodeURIComponent(kalenderId)}/events?` + new URLSearchParams({
+        singleEvents: 'true', orderBy: 'startTime', maxResults: '2500', showDeleted: 'false',
+        timeMin: new Date(von + 'T00:00:00').toISOString(), timeMax: new Date(bis + 'T23:59:59').toISOString(),
+        fields: 'nextPageToken,items(id,status,summary,location,description,start,end,htmlLink)', ...(seite ? { pageToken: seite } : {}),
+      }));
+      alle.push(...(r.items || []).map(e => ({ ...e, kalenderId })));
+      seite = r.nextPageToken || '';
+    } while (seite);
+    return alle;
   },
 
   async konto() {

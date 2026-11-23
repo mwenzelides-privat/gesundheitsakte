@@ -3,6 +3,7 @@ import { Z, aendern, akteAnlegen, dateiHochladen, ausEingangAblegen, ablageAnpas
 import { esc, heuteIso, neueId, WOCHE, WT_LANG, svg, datum } from './hilfen.js';
 import { finde, kat, faecher, STATUS_ERKRANKUNG, DOKUMENT_TYPEN, zeitenLesen, zeitenText, vorsorgeAbgleichen } from './modell.js';
 import { blattKopf, formularProfil } from './ansichten.js';
+import { kandidatZuordnen, kalenderAbgleichen } from './kalender.js';
 
 const A = () => Z.akte;
 const QUELLEN = ['Scan', 'TK-ePA', 'E-Mail', 'Papier', 'Arztportal', 'Sonstiges'];
@@ -82,8 +83,31 @@ export function formular(typ, id, vorgaben = {}) {
         ${feld({ name: 'notiz', label: 'Notiz', typ: 'textarea', wert: e.notiz, attr: 'placeholder="Behandlung, Medikamente, Verlauf …"' })}`, { loeschbar: !!id });
     }
 
+    case 'kandidat': {
+      const c = (Z.kalender?.kandidaten || []).find(x => x.id === id); if (!c) return null;
+      return rahmen('kandidat', id, c.titel, 'Kalendereintrag zuordnen', `
+        <p class="small" style="margin:0">${datum(c.datum)}${c.zeit ? `, ${c.zeit} Uhr` : ''}${c.ort ? ' · ' + esc(c.ort) : ''}</p>
+        ${feld({ name: 'arzt', label: 'Arzt', typ: 'select', wert: '', optionen: arztOptionen('– kein bestimmter Arzt –') })}
+        ${feld({ name: 'kat', label: 'Fachbereich (wenn kein Arzt)', typ: 'select', wert: '', optionen: katOptionen(false, '– bitte wählen –') })}
+        ${feld({ name: 'stichwort', label: 'Künftig automatisch zuordnen, wenn der Titel enthält', wert: c.titel, hilfe: 'leer lassen = nur diesen Eintrag zuordnen' })}`, { knopf: 'Zuordnen' });
+    }
+
+    case 'kalenderwahl': {
+      const liste = vorgaben.liste || [];
+      const gewaehlt = a.einstellungen?.kalender?.length ? a.einstellungen.kalender : ['primary'];
+      return rahmen('kalenderwahl', '', 'Welche Kalender sollen gelesen werden?', 'Google Kalender', `
+        <fieldset><legend>Kalender</legend><div class="checks" style="grid-template-columns:1fr">${liste.map(k => `<label class="check"><input type="checkbox" name="kalender" value="${esc(k.id)}" ${gewaehlt.includes(k.id) ? 'checked' : ''}>
+          <span class="dot" style="background:${esc(k.farbe || 'var(--accent)')}"></span> ${esc(k.name)}${k.primaer ? ' (Hauptkalender)' : ''}</label>`).join('')}</div></fieldset>
+        <p class="small muted" style="margin:0">Nur in diesen Kalendern wird nach Arztterminen gesucht.</p>`, { knopf: 'Übernehmen' });
+    }
+
     case 'termin': {
       const t = finde(a, 'termine', id) || { datum: heuteIso(), zeit: '', arzt: vorgaben.arzt || '', kat: vorgaben.kat || '' };
+      if (t.quelle === 'kalender') return rahmen('termin', id, t.titel, 'Termin aus dem Google Kalender', `
+        <p class="small" style="margin:0">${datum(t.datum)}${t.zeit ? `, ${t.zeit} Uhr` : ''}. Datum, Uhrzeit und Anlass kommen aus dem Kalender und werden dort geändert.</p>
+        ${feld({ name: 'arzt', label: 'Arzt', typ: 'select', wert: t.arzt, optionen: arztOptionen() })}
+        ${feld({ name: 'kat', label: 'Fachbereich (abweichend vom Arzt)', typ: 'select', wert: t.kat || '', optionen: katOptionen(false, '– wie beim Arzt –') })}
+        ${feld({ name: 'notiz', label: 'Notiz', typ: 'textarea', wert: t.notiz })}`);
       return rahmen('termin', id, id ? t.titel : 'Termin erfassen', 'Arzttermin', `
         <div class="feldreihe">
           ${feld({ name: 'datum', label: 'Datum', typ: 'date', wert: t.datum, pflicht: true })}
@@ -205,6 +229,26 @@ export async function absenden(form) {
     if (daten.bis && daten.status === 'aktiv') daten.status = 'abgeschlossen';
     aendern(x => { if (id) Object.assign(finde(x, 'erkrankungen', id), daten); else x.erkrankungen.push({ id: neueId('e'), ...daten }); });
     return id ? 'Erkrankung gespeichert.' : 'Erkrankung erfasst.';
+  }
+
+  if (name === 'kandidat') {
+    const arztId = text(fd, 'arzt') || null, katId = text(fd, 'kat') || null;
+    if (!arztId && !katId) throw new Error('Bitte einen Arzt oder einen Fachbereich wählen.');
+    const r = kandidatZuordnen(id, { arzt: arztId, kat: katId, stichwort: text(fd, 'stichwort') });
+    return `Zugeordnet.${r.neu > 1 ? ` Insgesamt ${r.neu} Termine übernommen.` : ''}`;
+  }
+
+  if (name === 'kalenderwahl') {
+    const liste = fd.getAll('kalender').map(String);
+    if (!liste.length) throw new Error('Bitte mindestens einen Kalender wählen.');
+    aendern(x => { x.einstellungen.kalender = liste; });
+    const r = await kalenderAbgleichen();
+    return r.status === 'ok' ? `Kalender gelesen: ${r.neu} neue Arzttermine.` : 'Auswahl gespeichert.';
+  }
+
+  if (name === 'termin' && finde(a, 'termine', id)?.quelle === 'kalender') {
+    aendern(x => { const t = finde(x, 'termine', id); t.arzt = text(fd, 'arzt') || null; t.kat = text(fd, 'kat') || null; t.notiz = text(fd, 'notiz'); t.manuell = true; });
+    return 'Termin gespeichert.';
   }
 
   if (name === 'termin') {

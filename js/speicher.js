@@ -22,6 +22,8 @@ export const Z = {
   zuletztGespeichert: null,
   konflikt: null,         // { fremd, version }
   eingang: null,          // Dateien in 00_Eingang (null = noch nicht gelesen)
+  kalender: null,         // { stand, gelesen, kandidaten, fehler } – nur im Speicher, nicht in der Akte
+  kalenderNamen: null,    // { kalenderId: Name } nach „Auswählen“
 };
 
 let beobachter = () => {};

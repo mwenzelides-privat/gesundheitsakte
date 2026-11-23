@@ -6,6 +6,16 @@ import { AnmeldungNoetig } from './drive.js';
 const dateien = new Map();
 let zaehler = 0;
 let verbunden = false;
+let kalenderErlaubt = true;
+const ev = (id, datum, zeit, summary, extra = {}) => ({ id, status: 'confirmed', summary, start: zeit ? { dateTime: `${datum}T${zeit}:00+01:00` } : { date: datum }, htmlLink: '#kalender-' + id, ...extra });
+let kalenderEintraege = [
+  ev('k1', '2026-12-03', '09:30', 'Zahnarzt Kontrolle'),
+  ev('k2', '2026-12-10', '17:00', 'Physiotherapie'),
+  ev('k3', '2026-12-15', '08:00', 'Blutabnahme Hausarzt'),
+  ev('k4', '2026-12-18', '15:00', 'Termin Dr. Beispiel'),
+  ev('k5', '2026-12-20', '', 'Geburtstag Oma'),
+  ev('k6', '2026-12-22', '10:00', 'Hautarzt Screening'),
+];
 const neu = (felder) => { const id = 'f' + (++zaehler); const f = { id, version: 1, modifiedTime: new Date().toISOString(), trashed: false, ...felder }; dateien.set(id, f); return f; };
 const meta = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, version: String(f.version), md5Checksum: f.ordner ? undefined : 'md5-' + f.id + '-' + f.version, modifiedTime: f.modifiedTime, parents: [f.eltern], size: String(f.inhalt?.length || 0), webViewLink: '#test-' + f.id });
 const textVon = async inhalt => typeof inhalt === 'string' ? inhalt : await inhalt.text();
@@ -31,6 +41,18 @@ export const testDrive = {
   async inPapierkorb(id) { await pause(); dateien.get(id).trashed = true; return { id }; },
   async verschieben(id, name, neuerOrdner) { await pause(); const f = dateien.get(id); f.name = name; f.eltern = neuerOrdner; f.version++; return meta(f); },
   link: id => '#test-' + id,
+
+  // Kalender (Testdaten, per testDrive.kalenderSetzen() austauschbar)
+  kalenderErlaubt: () => verbunden && kalenderErlaubt,
+  async kalenderListe() { await pause(); return [{ id: 'primary', name: 'Privat', primaer: true }, { id: 'familie', name: 'Familie', primaer: false }]; },
+  async kalenderTermine(kalenderId, von, bis) {
+    await pause();
+    return kalenderEintraege.filter(e => (e.kalenderId || 'primary') === kalenderId)
+      .filter(e => { const d = (e.start.date || e.start.dateTime).slice(0, 10); return d >= von && d <= bis; })
+      .map(e => ({ kalenderId, ...e }));
+  },
+  kalenderSetzen(liste) { kalenderEintraege = liste; },
+  kalenderSperren(an = true) { kalenderErlaubt = !an; },
 
   // Eingriffe für Tests
   alle: () => [...dateien.values()].map(f => ({ id: f.id, name: f.name, eltern: f.eltern, version: f.version, trashed: f.trashed })),

@@ -510,3 +510,9 @@ body.blatt-offen { overflow: hidden; }
   .vz-aktion { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .vorsorge-zeile .streifen { grid-row: 1 / span 4; }
 }
+
+/* Iteration 3: Kalender */
+.kalender-leiste { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
+.kalender-leiste svg { width: 16px; height: 16px; flex: none; }
+.kalender-leiste.warn { color: var(--warn); }
+.zeile .quelle svg { vertical-align: -2px; }
