@@ -24,7 +24,7 @@ const BEISPIEL = () => Z.modus === 'beispiel'
 export function ansichtBegruessung() {
   const eingerichtet = googleDrive.eingerichtet() || new URLSearchParams(location.search).has('test');
   return `<div class="begruessung">
-    <div class="brand-mark gross-mark">${svg('plus', 'width="34" height="34" stroke-width="2.6"')}</div>
+    <img class="brand-icon" src="icons/icon-192.png" alt="" width="76" height="76" style="width:76px;height:76px;border-radius:17px">
     <h1>Gesundheitsakte</h1>
     <p>Deine Krankengeschichte, Befunde, Arzttermine und Vorsorge an einem Ort. Die Daten liegen ausschließlich in deinem privaten Google Drive im Ordner <span class="mono">60 Gesundheit/Gesundheitsakte</span>.</p>
     <div class="knoepfe mitte">

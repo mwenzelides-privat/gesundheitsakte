@@ -1,9 +1,9 @@
 // Service Worker: hält die App-Dateien offline bereit. Daten (Google Drive) werden nie zwischengespeichert.
-const CACHE = 'gesundheitsakte-0.4.0';
+const CACHE = 'gesundheitsakte-0.4.1';
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/konfig.js', 'js/hilfen.js', 'js/modell.js', 'js/beispiel.js', 'js/drive.js', 'js/speicher.js', 'js/ansichten.js', 'js/formulare.js', 'js/import.js', 'js/kalender.js',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
+  'icons/icon-192.png', 'icons/favicon-32.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', e => {

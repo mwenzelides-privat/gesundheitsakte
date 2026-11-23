@@ -103,7 +103,7 @@ export const googleDrive = {
       const r = await api('GET', KAL + `calendars/${encodeURIComponent(kalenderId)}/events?` + new URLSearchParams({
         singleEvents: 'true', orderBy: 'startTime', maxResults: '2500', showDeleted: 'false',
         timeMin: new Date(von + 'T00:00:00').toISOString(), timeMax: new Date(bis + 'T23:59:59').toISOString(),
-        fields: 'nextPageToken,items(id,status,summary,location,description,start,end,htmlLink)', ...(seite ? { pageToken: seite } : {}),
+        fields: 'nextPageToken,items(id,status,summary,location,description,start,end,htmlLink,eventType)', ...(seite ? { pageToken: seite } : {}),
       }));
       alle.push(...(r.items || []).map(e => ({ ...e, kalenderId })));
       seite = r.nextPageToken || '';

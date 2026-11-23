@@ -516,3 +516,7 @@ body.blatt-offen { overflow: hidden; }
 .kalender-leiste svg { width: 16px; height: 16px; flex: none; }
 .kalender-leiste.warn { color: var(--warn); }
 .zeile .quelle svg { vertical-align: -2px; }
+
+/* Programmsymbol (gleiches Grün wie die anderen eigenen Programme) */
+.brand-icon { width: 36px; height: 36px; flex: none; border-radius: 9px; display: block; }
+.brand-icon.klein { width: 28px; height: 28px; border-radius: 7px; }

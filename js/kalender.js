@@ -33,7 +33,11 @@ const FACH_STICHWORTE = [
   ['hausarzt', /hausarzt|allgemeinarzt|blutabnahme|blut abnehmen|check-?up|gesundheitsuntersuchung|blutdruck|24-?h-?messung|labor/],
   ['chirurgie', /chirurg|operation|\bop\b|krankenhaus|klinikum|herniensprechstunde/],
 ];
-const ARZT_HINWEIS = /\barzt\b|arztin|\bdr\b|\bdr\.|praxis|sprechstunde|vorsorge|befund|klinik|termin bei|nachkontrolle|untersuchung/;
+// Einträge, die nie Arzttermine sind (auch wenn „Dr.“ oder ein Arztname darin vorkommt)
+const KEIN_ARZTTERMIN = /geburtstag|\bgeb\.|jahrestag|hochzeitstag|namenstag|todestag|feiertag|ferien|urlaub|\bessen\b|party|feier\b|kino|konzert|flug\b|\bzug\b|hotel/;
+// Geburtstage aus Google Kontakte, Arbeitsort, Abwesenheit, Fokuszeit
+const KEINE_TERMINARTEN = new Set(['birthday', 'workingLocation', 'outOfOffice', 'focusTime']);
+const ARZT_HINWEIS =/\barzt\b|arztin|\bdr\b|\bdr\.|praxis|sprechstunde|vorsorge|befund|klinik|termin bei|nachkontrolle|untersuchung/;
 
 /**
  * Prüft einen Kalendereintrag. Ergebnis:
@@ -46,8 +50,10 @@ export function erkennen(akte, ev) {
   if ((e.kalenderIgnoriert || []).includes(ev.id)) return null;
   const manuell = (e.kalenderZuordnung || {})[ev.id];
   if (manuell) return { ...manuell, grund: 'zugeordnet' };
+  if (KEINE_TERMINARTEN.has(ev.eventType)) return null;
   const text = norm([ev.summary, ev.location, ev.description].filter(Boolean).join(' '));
   if (!text.trim()) return null;
+  if (KEIN_ARZTTERMIN.test(norm(ev.summary))) return null;
 
   for (const r of e.kalenderRegeln || []) {
     if (r.stichwort && text.includes(norm(r.stichwort))) return { arzt: r.arzt || null, kat: r.kat || null, grund: `Regel „${r.stichwort}“` };
