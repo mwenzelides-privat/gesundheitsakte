@@ -4,6 +4,7 @@ import { googleDrive } from './drive.js';
 import { VERSION, STAND } from './konfig.js';
 import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NAME, WT_LANG, heute, iso } from './hilfen.js';
 import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG, STATUS_ERKRANKUNG, offen, zeitenText } from './modell.js';
+import { personenVorschlaege } from './kalender.js';
 
 const A = () => Z.akte;
 const arzt = id => finde(A(), 'aerzte', id);
@@ -356,6 +357,7 @@ export function ansichtTermine() {
   <div class="kopf"><div><h1>Arzttermine</h1><p>Aus deinem Google Kalender übernommen und den Ärzten zugeordnet, dazu selbst erfasste Termine und die aus dem Tagebuch.</p></div>
     <div class="knoepfe">${Z.modus === 'konto' ? `<button class="btn" data-aktion="kalender-abgleich">${svg('kalender')}Kalender abgleichen</button>` : ''}${neuKnopf('termin', 'Termin erfassen')}</div></div>
   ${kalenderLeiste()}
+  ${personenPanel()}
   ${kandidatenPanel()}
   <div class="grid2">
     <div class="stack">
@@ -382,6 +384,20 @@ function kalenderLeiste() {
   if (k?.fehler) return `<p class="kalender-leiste warn">${svg('kalender')}Kalender konnte nicht gelesen werden: ${esc(k.fehler)}</p>`;
   if (!k?.stand) return `<p class="kalender-leiste">${svg('kalender')}Kalender wird gelesen …</p>`;
   return `<p class="kalender-leiste">${svg('kalender')}Google Kalender abgeglichen um ${k.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · ${k.gelesen} Einträge gelesen · ${imKalender} Arzttermine verknüpft</p>`;
+}
+function personenPanel() {
+  if (Z.modus !== 'konto') return '';
+  const liste = personenVorschlaege();
+  if (!liste.length) return '';
+  return `<section class="panel"><div class="panel-kopf"><h2>Termine anderer Personen?</h2><span class="small muted">aus deinem Kalender</span></div>
+    <p class="small" style="margin:0 0 10px">Diese Namen stehen in mehreren Arztterminen, sind aber weder du noch einer deiner Ärzte. Angehakte Personen werden ausgeblendet – ihre Termine kommen nicht in deine Akte. Steht dein eigener Name oder „ich“ mit im Titel, bleibt der Termin.</p>
+    <form data-form="personen" class="formular" novalidate style="gap:8px">
+      <div class="checks">${liste.map(p => `<label class="check" title="${esc(p.beispiele.join(' · '))}"><input type="checkbox" name="person" value="${esc(p.name)}" ${p.vorgewaehlt ? 'checked' : ''}>
+        <span><b>${esc(p.name)}</b> <span class="small muted">· ${p.anzahl} Termine, z. B. „${esc(p.beispiele[0])}“</span></span></label>`).join('')}</div>
+      <input type="hidden" name="alle" value="${esc(liste.map(p => p.name).join('|'))}">
+      <p class="formular-fehler" hidden></p>
+      <div class="knoepfe"><button class="btn primaer" type="submit">Angehakte ausblenden</button></div>
+    </form></section>`;
 }
 function kandidatenPanel() {
   const liste = (Z.kalender?.kandidaten || []).slice().sort((x, y) => y.datum.localeCompare(x.datum));
@@ -600,6 +616,12 @@ function kalenderEinstellungen(a) {
       ${Z.kalender?.stand ? `<dt>Zuletzt</dt><dd>${Z.kalender.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr, ${Z.kalender.gelesen} Einträge gelesen</dd>` : ''}
       <dt>Ignoriert</dt><dd>${(e.kalenderIgnoriert || []).length} Einträge${(e.kalenderIgnoriert || []).length ? ' · <button class="link" data-aktion="kalender-ignoriert-zuruecksetzen">zurücksetzen</button>' : ''}</dd>
     </dl>
+    <h3 style="margin:14px 0 6px">Termine dieser Personen ausblenden</h3>
+    <div class="filter">${(e.kalenderPersonen || []).map(p => `<button type="button" data-person-entfernen="${esc(p)}" title="Wieder einblenden" aria-pressed="false">${esc(p)} ✕</button>`).join('') || '<span class="small muted">noch keine</span>'}</div>
+    <form data-form="person-neu" class="feldreihe" novalidate style="margin-top:8px;align-items:end">
+      <div class="feld"><label for="person-neu">Name hinzufügen</label><input id="person-neu" name="name" placeholder="z. B. Vorname eines Kindes oder Haustiers"></div>
+      <div class="knoepfe"><button class="btn" type="submit">Hinzufügen</button></div><p class="formular-fehler" hidden></p>
+    </form>
     ${(e.kalenderRegeln || []).length ? `<h3 style="margin:14px 0 6px">Eigene Zuordnungsregeln</h3><div class="liste">${e.kalenderRegeln.map((r, i) => `<div class="zeile" style="align-items:center"><div class="grow"><div class="t">„${esc(r.stichwort)}“</div>
       <div class="s">→ ${esc(r.arzt ? (arzt(r.arzt)?.name || 'gelöschter Arzt') : kat(a, r.kat).name)}</div></div><button class="btn klein" data-regel-loeschen="${i}">Löschen</button></div>`).join('')}</div>` : ''}
     <p class="small muted" style="margin:12px 0 0">Gespeichert werden nur Einträge, die als Arzttermin erkannt werden: am Arztnamen, an Stichwörtern wie „Zahnarzt“ oder „Physio“ oder an deinen Regeln. Alles andere bleibt nur im Kalender.</p>

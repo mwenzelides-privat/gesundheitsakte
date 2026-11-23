@@ -8,7 +8,7 @@ import { formular, absenden, loeschFrage, loeschSperre, loeschen } from './formu
 import { vorsorgeLage } from './modell.js';
 import { importLesen, importVorschau, importAnwenden } from './import.js';
 import { aendern, dateienVerknuepfen } from './speicher.js';
-import { kalenderAbgleichen, kandidatIgnorieren, regelLoeschen, terminIgnorieren } from './kalender.js';
+import { kalenderAbgleichen, kandidatIgnorieren, regelLoeschen, terminIgnorieren, personEntfernen } from './kalender.js';
 import { finde } from './modell.js';
 
 /** Kalender im Hintergrund abgleichen; meldet nur, wenn sich etwas getan hat (oder wenn ausdrücklich angestoßen). */
@@ -167,7 +167,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -185,6 +185,7 @@ document.addEventListener('click', async ev => {
   if (d.kandidatIgnorieren) { kandidatIgnorieren(d.kandidatIgnorieren); zeichnen(); toast('Wird nicht mehr als Arzttermin vorgeschlagen.'); return; }
   if (d.terminIgnorieren) { const t = finde(Z.akte, 'termine', d.terminIgnorieren); if (t) { terminIgnorieren(t); blattZu(); toast('Aus den Arztterminen entfernt. Der Kalendereintrag bleibt unverändert.'); } return; }
   if (d.regelLoeschen !== undefined) { regelLoeschen(+d.regelLoeschen); zeichnen(); toast('Regel gelöscht.'); return; }
+  if (d.personEntfernen) { personEntfernen(d.personEntfernen); zeichnen(); toast(`${d.personEntfernen} wird wieder berücksichtigt.`); return; }
   if (d.loeschen) {
     const [typ, id] = d.loeschen.split(':');
     const form = el.closest('form');

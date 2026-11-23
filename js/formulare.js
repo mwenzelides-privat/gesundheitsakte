@@ -3,7 +3,7 @@ import { Z, aendern, akteAnlegen, dateiHochladen, ausEingangAblegen, ablageAnpas
 import { esc, heuteIso, neueId, WOCHE, WT_LANG, svg, datum } from './hilfen.js';
 import { finde, kat, faecher, STATUS_ERKRANKUNG, DOKUMENT_TYPEN, zeitenLesen, zeitenText, vorsorgeAbgleichen } from './modell.js';
 import { blattKopf, formularProfil } from './ansichten.js';
-import { kandidatZuordnen, kalenderAbgleichen } from './kalender.js';
+import { kandidatZuordnen, kalenderAbgleichen, personenFestlegen } from './kalender.js';
 
 const A = () => Z.akte;
 const QUELLEN = ['Scan', 'TK-ePA', 'E-Mail', 'Papier', 'Arztportal', 'Sonstiges'];
@@ -236,6 +236,18 @@ export async function absenden(form) {
     if (!arztId && !katId) throw new Error('Bitte einen Arzt oder einen Fachbereich wählen.');
     const r = kandidatZuordnen(id, { arzt: arztId, kat: katId, stichwort: text(fd, 'stichwort') });
     return `Zugeordnet.${r.neu > 1 ? ` Insgesamt ${r.neu} Termine übernommen.` : ''}`;
+  }
+
+  if (name === 'personen') {
+    const alle = text(fd, 'alle').split('|').filter(Boolean);
+    const aus = fd.getAll('person').map(String);
+    const r = personenFestlegen(aus, alle.filter(n => !aus.includes(n)));
+    return aus.length ? `${aus.join(', ')} ausgeblendet. ${r.entfernt ? r.entfernt + ' Termine aus der Akte genommen.' : ''}` : 'Gespeichert, niemand ausgeblendet.';
+  }
+  if (name === 'person-neu') {
+    const n = pflicht(text(fd, 'name'), 'Name');
+    const r = personenFestlegen([n], []);
+    return `${n} ausgeblendet.${r.entfernt ? ` ${r.entfernt} Termine aus der Akte genommen.` : ''}`;
   }
 
   if (name === 'kalenderwahl') {

@@ -15,29 +15,35 @@ const FUELL = new Set(['dr', 'med', 'dent', 'prof', 'praxis', 'fur', 'und', 'der
   'gemeinschaftspraxis', 'kreisklinik', 'zentrum', 'brustzentrum', 'kardiologie', 'urologie', 'orthopadie', 'nephrologie', 'radiologie', 'chirurgie',
   'erding', 'freising', 'dorfen', 'munchen', 'ebersberg', 'smile', 'eyes', 'dres', 'innere', 'medizin', 'allgemeinmedizin']);
 
-/** Unterscheidende Namensteile eines Arztes, z. B. „Dr. med. Bernhard Brandlhuber“ → ['brandlhuber', 'bernhard']. */
-function namensTeile(a) {
-  return norm(a.name).split(/[^a-z0-9]+/).filter(w => w.length >= 5 && !FUELL.has(w));
+/**
+ * Nachname bzw. unterscheidender Name eines Arztes – nie Vornamen (sonst wäre „Bernhard hat Geburtstag“ ein Arzttermin).
+ * „Dr. med. Bernhard Brandlhuber“ → 'brandlhuber', „Praxis für Zahnheilkunde Adriana Hintermaier“ → 'hintermaier',
+ * „KfH-Nierenzentrum Erding“ → 'nierenzentrum', „Kardiologie Erding/Freising (Dres. …)“ → keiner.
+ */
+function nachname(a) {
+  const woerter = norm(String(a.name).replace(/\([^)]*\)/g, ' ')).split(/[^a-z0-9]+/).filter(w => w.length >= 5 && !FUELL.has(w));
+  return woerter.at(-1) || null;
 }
 
-// Stichwörter → Fachbereich (Reihenfolge = Vorrang)
+// Stichwörter → Fachbereich (Reihenfolge = Vorrang). Nur eindeutige medizinische Begriffe.
 const FACH_STICHWORTE = [
-  ['zahn', /zahn|dental|\bpzr\b|kieferorthop|prophylaxe/],
-  ['auge', /augenarzt|augenklinik|augenheilk|ophthalm|augendruck|augen-?untersuchung/],
+  ['zahn', /zahnarzt|zahnreinigung|zahnarzttermin|\bpzr\b|kieferorthop|\bkfo\b/],
+  ['auge', /augenarzt|augenklinik|augenheilk|ophthalm|augendruck/],
   ['haut', /hautarzt|dermatolog|hautkrebs|hautscreening|haut-?screening/],
   ['uro', /urolog|prostata|vasektom/],
-  ['ruecken', /orthop|physio|krankengymnast|osteopath|\bmrt\b|chiropr|rucken|bandscheib|ruckenschule/],
-  ['innere', /kardiolog|nephrolog|internist|gastroenterolog|darmspiegel|koloskop|magenspiegel|herzultraschall|langzeit-?ekg/],
+  ['ruecken', /orthopad|physio|krankengymnast|osteopath|ostheopat|\bmrt\b|chiropr|bandscheib/],
+  ['innere', /kardiolog|nephrolog|internist|gastroenterolog|darmspiegel|koloskop|magenspiegel|nuklearmed/],
   ['hno', /\bhno\b|hals-nasen|ohrenarzt/],
-  ['impf', /impfung|impfen|auffrischung|grippeschutz/],
-  ['hausarzt', /hausarzt|allgemeinarzt|blutabnahme|blut abnehmen|check-?up|gesundheitsuntersuchung|blutdruck|24-?h-?messung|labor/],
-  ['chirurgie', /chirurg|operation|\bop\b|krankenhaus|klinikum|herniensprechstunde/],
+  ['impf', /impfung|\bimpfen\b|grippeschutz/],
+  ['hausarzt', /hausarzt|allgemeinarzt|blutabnahme|blut abnehmen|check-?up|gesundheitsuntersuchung|24 ?h[- ]messung/],
+  ['chirurgie', /chirurg|herniensprechstunde/],
 ];
 // Einträge, die nie Arzttermine sind (auch wenn „Dr.“ oder ein Arztname darin vorkommt)
-const KEIN_ARZTTERMIN = /geburtstag|\bgeb\.|jahrestag|hochzeitstag|namenstag|todestag|feiertag|ferien|urlaub|\bessen\b|party|feier\b|kino|konzert|flug\b|\bzug\b|hotel/;
+const KEIN_ARZTTERMIN = /geburtstag|\bgeb\.|jahrestag|hochzeitstag|namenstag|todestag|feiertag|ferien|urlaub|\bessen\b|party|feier\b|kino|konzert|flug\b|\bzug\b|hotel|wochen nach op|kurs\b|schulung|vorstellungsgesprach|to-?do/;
 // Geburtstage aus Google Kontakte, Arbeitsort, Abwesenheit, Fokuszeit
 const KEINE_TERMINARTEN = new Set(['birthday', 'workingLocation', 'outOfOffice', 'focusTime']);
-const ARZT_HINWEIS =/\barzt\b|arztin|\bdr\b|\bdr\.|praxis|sprechstunde|vorsorge|befund|klinik|termin bei|nachkontrolle|untersuchung/;
+// Klingt nach Arzt, reicht aber nicht für eine sichere Zuordnung → nur Vorschlag
+const ARZT_HINWEIS = /\barzt\b|arzttermin|arztin|\bdr\b|\bdr\.|\bdoktor\b|praxis|sprechstunde|vorsorge|befund|klinik|krankenhaus|\bop\b|operation|nachkontrolle|untersuchung|rontgen|labor|blutdruck/;
 
 /**
  * Prüft einen Kalendereintrag. Ergebnis:
@@ -51,34 +57,99 @@ export function erkennen(akte, ev) {
   const manuell = (e.kalenderZuordnung || {})[ev.id];
   if (manuell) return { ...manuell, grund: 'zugeordnet' };
   if (KEINE_TERMINARTEN.has(ev.eventType)) return null;
-  const text = norm([ev.summary, ev.location, ev.description].filter(Boolean).join(' '));
-  if (!text.trim()) return null;
-  if (KEIN_ARZTTERMIN.test(norm(ev.summary))) return null;
+  // Nur Titel und Ort – der Beschreibungstext enthält zu oft Namen und Stichwörter aus anderen Zusammenhängen
+  const titel = norm(ev.summary);
+  const text = norm([ev.summary, ev.location].filter(Boolean).join(' '));
+  if (!titel.trim()) return null;
+  if (KEIN_ARZTTERMIN.test(titel)) return null;
+  if (fremdePerson(akte, ev.summary)) return null;
 
   for (const r of e.kalenderRegeln || []) {
     if (r.stichwort && text.includes(norm(r.stichwort))) return { arzt: r.arzt || null, kat: r.kat || null, grund: `Regel „${r.stichwort}“` };
   }
-  // Arztname im Titel, Ort oder in der Beschreibung (ganzes Wort). Kurze Namen, die auch normale Wörter sein
-  // können (z. B. „Burger“), zählen nur mit Zusammenhang (Dr., Praxis, Fachwort …), sonst nur als Vorschlag.
+  // Nachname eines Arztes als ganzes Wort. Kurze Namen, die auch normale Wörter sein können (z. B. „Burger“),
+  // zählen nur mit Zusammenhang (Dr., Praxis, Fachwort …), sonst nur als Vorschlag.
   const fach = FACH_STICHWORTE.find(([, re]) => re.test(text))?.[0] || null;
   const zusammenhang = !!fach || ARZT_HINWEIS.test(text) || /\b(frau|herr)\b/.test(text);
-  const namensTreffer = a => namensTeile(a).filter(t => new RegExp(`\\b${t}\\b`).test(text));
-  const treffer = akte.aerzte.filter(a => namensTreffer(a).some(t => t.length >= 7 || zusammenhang));
-  const schwach = akte.aerzte.some(a => namensTreffer(a).length);
+  const imText = a => { const n = nachname(a); return n && new RegExp(`\\b${n}\\b`).test(text) ? n : null; };
+  const treffer = akte.aerzte.filter(a => { const n = imText(a); return n && (n.length >= 7 || zusammenhang); });
   if (treffer.length === 1) return { arzt: treffer[0].id, kat: null, grund: 'Arztname' };
-  if (!treffer.length && schwach && !fach) return { kandidat: true };
   if (treffer.length > 1) {
     const passend = treffer.filter(a => a.kat === fach);
     if (passend.length === 1) return { arzt: passend[0].id, kat: null, grund: 'Arztname' };
     return { kandidat: true };
   }
+  if (!fach && akte.aerzte.some(imText)) return { kandidat: true };
   if (fach) {
+    // Ein anderer, unbekannter Arzt im Titel („Kieferorthopädie Dr. Blank“) → nur das Fach, keinen Arzt raten
+    const fremderDoktor = /\b(dr|doktor)\b\.?\s*[a-z]{3,}/.test(titel);
     const inFach = akte.aerzte.filter(a => a.kat === fach);
     // Nur ein Arzt in diesem Fach → ihm zuordnen (z. B. „Zahnreinigung“ → die eine Zahnarztpraxis)
-    if (inFach.length === 1) return { arzt: inFach[0].id, kat: null, grund: 'Fach' };
+    if (inFach.length === 1 && !fremderDoktor) return { arzt: inFach[0].id, kat: null, grund: 'Fach' };
     return { arzt: null, kat: fach, grund: 'Fach' };
   }
   return ARZT_HINWEIS.test(text) ? { kandidat: true } : null;
+}
+
+// ---------------------------------------------------------------- Termine anderer Personen
+/** Enthält der Titel den Namen einer Person, deren Termine nicht in diese Akte gehören (Kinder, Partnerin, Haustier …)? */
+function fremdePerson(akte, summary) {
+  const personen = akte.einstellungen?.kalenderPersonen || [];
+  if (!personen.length) return false;
+  const t = norm(summary);
+  const eigene = [...eigeneNamen(akte), 'ich'];
+  if (eigene.some(n => new RegExp(`\\b${n}\\b`).test(t))) return false;
+  return personen.some(p => new RegExp(`\\b${norm(p)}\\b`).test(t));
+}
+const eigeneNamen = akte => norm(`${akte.profil?.name || ''} ${akte.profil?.rufname || ''}`).split(/[^a-z]+/).filter(w => w.length >= 3 && !FUELL.has(w));
+
+// Wörter, die in Arztterminen vorkommen, aber keine Personennamen sind
+const KEIN_NAME = new Set(['termin', 'arzttermin', 'physio', 'physiotherapie', 'praxis', 'zahnarzt', 'zahnarzttermin', 'zahnreinigung', 'professionelle', 'impfung',
+  'covid', 'biontec', 'biontech', 'orthopadie', 'orthopade', 'urologe', 'hautarzt', 'augenarzt', 'hausarzt', 'hausarzttermin', 'osteopath', 'osteopathie', 'chiropraktik',
+  'kieferorthopadie', 'vorsorge', 'kontrolle', 'nachkontrolle', 'untersuchung', 'voruntersuchung', 'besprechung', 'vorbesprechung', 'vorgesprach', 'planbesprechung',
+  'rezept', 'tabletten', 'messung', 'blutdruck', 'krankschreibung', 'schilddruse', 'neurologie', 'radiologie', 'nuklearmedizin', 'chirurgie', 'operation', 'bericht',
+  'rontgen', 'rontgenbilder', 'erding', 'dorfen', 'freising', 'landshut', 'taufkirchen', 'vilsbiburg', 'waldkraiburg', 'isen', 'munchen', 'klinikum', 'mrt', 'kfo',
+  'hpv', 'fsme', 'tetanus', 'doktor', 'herr', 'herrn', 'frau', 'oberarztin', 'abholen', 'anrufen', 'wegen', 'beim', 'nach', 'mit', 'und', 'bei', 'der', 'die', 'das', 'ihr',
+  'hand', 'blut', 'faden', 'fuss', 'knie', 'rucken', 'heilpraxis', 'zentrum', 'mvz', 'gmbh', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag']);
+
+/**
+ * Schlägt Namen vor, die in mehreren erkannten Arztterminen vorkommen, aber weder Arzt noch man selbst sind –
+ * typischerweise Kinder, Partnerin oder Haustiere. Die Namen kommen ausschließlich aus dem eigenen Kalender.
+ */
+export function personenVorschlaege() {
+  const akte = Z.akte; if (!akte || !letzteEintraege.length) return [];
+  const e = akte.einstellungen || {};
+  const bekannt = new Set([...(e.kalenderPersonen || []), ...(e.kalenderPersonenKeine || [])].map(norm));
+  const aerzteNamen = new Set(akte.aerzte.flatMap(a => norm(a.name).split(/[^a-z]+/)));
+  const eigene = new Set(eigeneNamen(akte));
+  const zaehler = new Map();
+  for (const ev of letzteEintraege) {
+    if (!erkennen({ ...akte, einstellungen: { ...e, kalenderPersonen: [] } }, ev)) continue;
+    const woerter = String(ev.summary || '').match(/\b[A-ZÄÖÜ][a-zäöüß]{2,}\b/g) || [];
+    for (const w of new Set(woerter)) {
+      const n = norm(w);
+      if (KEIN_NAME.has(n) || aerzteNamen.has(n) || eigene.has(n) || bekannt.has(n) || FUELL.has(n)) continue;
+      if (FACH_STICHWORTE.some(([, re]) => re.test(n))) continue;
+      if (new RegExp(`\\b(dr|doktor|fr|frau|herrn?)\\.?\\s+${w}\\b`, 'i').test(ev.summary)) continue;   // „Dr. Gruber“ → Arzt, keine Angehörige
+      const z = zaehler.get(w) || { name: w, anzahl: 0, beispiele: [], vorne: 0 };
+      z.anzahl++; if (z.beispiele.length < 3) z.beispiele.push(ev.summary);
+      // „Mara Physio“, „Leo und Mara …“ → Name steht vorn; „Physiotherapie bei Steffi“ → eher Therapeutin
+      if (new RegExp(`^\\s*${w}\\b`).test(ev.summary) || new RegExp(`\\b(und|&)\\s+${w}\\b`).test(ev.summary)) z.vorne++;
+      zaehler.set(w, z);
+    }
+  }
+  return [...zaehler.values()].filter(z => z.anzahl >= 2).map(z => ({ ...z, vorgewaehlt: z.vorne > 0 })).sort((a, b) => b.vorgewaehlt - a.vorgewaehlt || b.anzahl - a.anzahl);
+}
+export function personenFestlegen(ausblenden, behalten) {
+  aendern(a => {
+    a.einstellungen.kalenderPersonen = [...new Set([...(a.einstellungen.kalenderPersonen || []), ...ausblenden])];
+    a.einstellungen.kalenderPersonenKeine = [...new Set([...(a.einstellungen.kalenderPersonenKeine || []), ...behalten])];
+  });
+  return neuZuordnen();
+}
+export function personEntfernen(name) {
+  aendern(a => { a.einstellungen.kalenderPersonen = (a.einstellungen.kalenderPersonen || []).filter(p => p !== name); });
+  return neuZuordnen();
 }
 
 const datumVon = ev => (ev.start?.date || ev.start?.dateTime || '').slice(0, 10);
