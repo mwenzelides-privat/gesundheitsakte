@@ -6,6 +6,31 @@ import { Z, beobachten, ausCacheStarten, beispielStarten, zurBegruessung, anmeld
 import * as V from './ansichten.js';
 import { formular, absenden, loeschFrage, loeschSperre, loeschen } from './formulare.js';
 import { vorsorgeLage } from './modell.js';
+import { importLesen, importVorschau, importAnwenden } from './import.js';
+import { aendern, dateienVerknuepfen } from './speicher.js';
+
+let wartenderImport = null;
+async function importDateiGewaehlt(datei) {
+  try {
+    const d = importLesen(await datei.text());
+    const v = importVorschau(Z.akte, d);
+    wartenderImport = d;
+    const zeile = (n, text, vorhanden, hinweis = 'schon vorhanden, werden übersprungen') => `<div class="zeile"><div class="grow"><div class="t">${n} ${text}</div>${vorhanden ? `<div class="s">${vorhanden} ${hinweis}</div>` : ''}</div></div>`;
+    blatt(`${V.blattKopf('Daten übernehmen', d.quelle || 'Import')}
+      <p class="small" style="margin:0">${esc(d.beschreibung || '')} Datei: <span class="mono">${esc(datei.name)}</span></p>
+      <section class="panel"><div class="liste">
+        ${zeile(v.erkrankungen, 'Erkrankungen und Behandlungen', v.erkrankungenVorhanden)}
+        ${zeile(v.aerzte, 'Ärzte und Praxen neu', v.aerzteVorhanden, 'gibt es schon in der Akte, fehlende Angaben werden ergänzt')}
+        ${zeile(v.termine, 'Arzttermine', v.termineVorhanden)}
+        ${zeile(v.dokumente, 'Dokumente und Befunde', v.dokumenteVorhanden)}
+        ${zeile(v.medikamente, 'Medikamente', v.medikamenteVorhanden)}
+        ${zeile(v.vorsorge, 'Vorsorge-Daten werden aktualisiert', 0)}
+        ${v.kategorien ? zeile(v.kategorien, 'neuer Fachbereich', 0) : ''}
+      </div></section>
+      <p class="small muted" style="margin:0">Nichts wird gelöscht. Alles lässt sich danach einzeln bearbeiten.${Z.modus === 'beispiel' ? ' Im Beispielmodus wird nichts gespeichert.' : ''}</p>
+      <div class="knoepfe"><button class="btn primaer" data-aktion="import-ja">Übernehmen</button><button class="btn" data-zu>Abbrechen</button></div>`);
+  } catch (e) { toast(e.message, 'fehler'); }
+}
 
 const TEST = new URLSearchParams(location.search).has('test');
 let drive = googleDrive;
@@ -183,6 +208,19 @@ document.addEventListener('click', async ev => {
       if (Z.ungespeichert) { toast('Es gibt noch nicht gespeicherte Änderungen. Bitte zuerst verbinden.', 'fehler'); return; }
       trennen({ lokalLoeschen: true }); location.hash = '#start'; toast('Abgemeldet. Die Daten auf diesem Gerät sind entfernt, die Akte in Drive bleibt.'); return;
     case 'eingang': if (!drive.verbunden()) await verbindenStarten(); else await eingangLesen(); return;
+    case 'import-ja': {
+      if (!wartenderImport) return;
+      const d = wartenderImport; wartenderImport = null;
+      aendern(a => importAnwenden(a, d));
+      blattZu(); location.hash = '#verlauf';
+      toast(`Übernommen: ${d.quelle || 'Import'}. Die Akte wird in Drive gespeichert.`);
+      if (Z.modus === 'konto' && drive.verbunden()) {
+        const n = await dateienVerknuepfen();
+        const ohne = Z.akte.dokumente.filter(x => x.datei && !x.driveId).length;
+        toast(`${n} Dateien mit den Dokumenten verknüpft.${ohne ? ` ${ohne} noch nicht in Drive gefunden – Google Drive synchronisiert evtl. noch; beim nächsten Verbinden wird erneut gesucht.` : ''}`);
+      }
+      return;
+    }
     case 'export': {
       const blob = new Blob([JSON.stringify(Z.akte, null, 1)], { type: 'application/json' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Gesundheitsakte_${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -215,6 +253,7 @@ document.addEventListener('submit', async ev => {
 document.addEventListener('input', ev => {
   const map = { 'f-suche': 'suche', 'f-kat': 'kat', 'f-typ': 'typ', 'f-jahr': 'jahr' };
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
+  if (ev.target.id === 'import-datei' && ev.target.files?.[0]) { importDateiGewaehlt(ev.target.files[0]); ev.target.value = ''; return; }
   if (ev.target.id === 'k-farbe') { const v = $('#k-vorschau'); v.style.setProperty('--h', ev.target.value); }
   if (ev.target.name === 'kurz' && $('#k-vorschau')) $('#k-vorschau').textContent = ev.target.value.toUpperCase() || 'AB';
 });

@@ -18,7 +18,7 @@ export const KATEGORIEN_STANDARD = [
 const KAT_GYN = { id: 'gyn', name: 'Frauenarzt', kurz: 'GY', h: 300 };
 
 export const STATUS_ERKRANKUNG = { aktiv: 'in Behandlung', chronisch: 'dauerhaft', abgeschlossen: 'abgeschlossen' };
-export const DOKUMENT_TYPEN = ['Befund', 'Arztbrief', 'Labor', 'Bildgebung', 'Verordnung', 'Rezept', 'Medikationsplan', 'Impfnachweis', 'Arbeitsunfähigkeit', 'Kostenplan', 'Rechnung', 'Nachweis', 'TK-Abrechnung', 'Sonstiges'];
+export const DOKUMENT_TYPEN = ['Befund', 'Arztbrief', 'Labor', 'Messwerte', 'Bildgebung', 'Verordnung', 'Rezept', 'Medikationsplan', 'Impfnachweis', 'Arbeitsunfähigkeit', 'Kostenplan', 'Rechnung', 'Nachweis', 'Formular', 'Information', 'TK-Abrechnung', 'Sonstiges'];
 
 // Vorsorge nach GKV/TK und STIKO (vereinfacht). abAlter bezieht sich auf das Kalenderjahr (nur Jahrgang bekannt).
 export const VORSORGE_REGELN = [

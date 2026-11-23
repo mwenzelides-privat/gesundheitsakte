@@ -116,6 +116,7 @@ export async function verbinden(konto) {
     melden();
     if (Z.status === 'bereit' && Z.ungespeichert) await speichernJetzt();
     eingangLesen();
+    dateienVerknuepfen();
   } catch (e) { fehlerBehandeln(e); melden(); }
 }
 
@@ -296,3 +297,29 @@ export async function eingangLesen() {
 }
 
 export const dateiLink = d => d.link || (d.driveId && Z.drive ? Z.drive.link(d.driveId) : null);
+
+/**
+ * Verknüpft Dokumente, die nur einen Dateinamen haben (z. B. aus einem Import), mit der Datei in Drive.
+ * Gesucht wird im Ordner des Fachbereichs. Liefert die Zahl der neu verknüpften Dokumente.
+ */
+export async function dateienVerknuepfen() {
+  if (Z.modus !== 'konto' || !Z.drive?.verbunden() || !Z.akte || !Z.ids.fachbereiche) return 0;
+  const offen = Z.akte.dokumente.filter(d => d.datei && !d.driveId);
+  if (!offen.length) return 0;
+  const funde = {};
+  try {
+    const nachKat = {};
+    for (const d of offen) (nachKat[d.kat] ||= []).push(d);
+    for (const [katId, docs] of Object.entries(nachKat)) {
+      const ordner = katId === 'tk' ? Z.ids.tk : (Z.ids.fach?.[katId] || await Z.drive.ordnerSuchen(kat(Z.akte, katId).name.replace(/[\\/]+/g, '-').trim(), Z.ids.fachbereiche));
+      if (!ordner) continue;
+      if (katId !== 'tk') Z.ids.fach = { ...(Z.ids.fach || {}), [katId]: ordner };
+      const dateien = await Z.drive.auflisten(ordner);
+      const nachName = new Map(dateien.map(f => [f.name.normalize('NFC'), f]));
+      for (const d of docs) { const f = nachName.get(d.datei.normalize('NFC')); if (f) funde[d.id] = f; }
+    }
+  } catch (e) { if (istAnmeldefehler(e)) { fehlerBehandeln(e); melden(); } else console.warn('Verknüpfen:', e); }
+  const n = Object.keys(funde).length;
+  if (n) aendern(a => { for (const d of a.dokumente) if (funde[d.id]) { d.driveId = funde[d.id].id; d.link = funde[d.id].webViewLink || Z.drive.link(funde[d.id].id); } });
+  return n;
+}

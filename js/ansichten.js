@@ -261,11 +261,13 @@ export function ansichtFach(k) {
       <div class="bonus">${jahre.map(y => `<div class="${kontrollen.includes(y) ? 'ja' : (y === bisJ ? 'offen' : '')}">${String(y).slice(2)}</div>`).join('')}</div>
       <p class="small muted" style="margin:10px 0 0">Ermittelt aus Zahnarztterminen und der letzten Kontrolle. Bitte mit dem Bonusheft abgleichen.</p></section>`;
   }
+  // Werteverläufe: je Messgröße (erster Wert eines Befunds) ein Diagramm, sobald es zwei Messungen gibt
   const messreihe = z.docs.filter(d => d.werte?.length).sort(nachDatum);
-  if (messreihe.length >= 2) {
-    const name = messreihe[0].werte[0][0];
-    const punkte = messreihe.map(d => d.werte.find(w => w[0] === name)).map((w, i) => w && { d: messreihe[i].datum, w: parseFloat(String(w[1]).replace(',', '.')), grenze: parseFloat(String(w[3]).replace(/[^\d,.]/g, '').replace(',', '.')) }).filter(p => p && !isNaN(p.w));
-    if (punkte.length >= 2) extra += `<section class="panel"><div class="panel-kopf"><h2>Verlauf ${esc(name)}</h2><span class="small muted">${esc(messreihe[0].werte[0][2])}</span></div>${spark(punkte, punkte.at(-1).grenze)}</section>`;
+  const groessen = [...new Set(messreihe.map(d => d.werte[0][0]))];
+  for (const name of groessen) {
+    const punkte = messreihe.map(d => ({ d: d.datum, w: d.werte.find(w => w[0] === name) })).filter(p => p.w)
+      .map(p => ({ d: p.d, w: zahl(p.w[1]), grenze: obergrenze(p.w[3]), einheit: p.w[2] })).filter(p => !isNaN(p.w));
+    if (punkte.length >= 2) extra += `<section class="panel"><div class="panel-kopf"><h2>Verlauf ${esc(name)}</h2><span class="small muted">${esc(punkte[0].einheit)}</span></div>${spark(punkte, punkte.at(-1).grenze)}</section>`;
   }
   const meds = (a.medikamente || []).filter(m => z.erk.some(e => e.id === m.erk));
   if (meds.length) extra += `<section class="panel"><div class="panel-kopf"><h2>Dauermedikation</h2></div><div class="liste">${meds.map(m => `<div class="zeile"><div class="grow"><div class="t">${esc(m.name)}</div><div class="s">${esc(m.dosierung)} · seit ${datum(m.seit)} · ${esc(m.grund)}</div></div><span class="pill st-chronisch">dauerhaft</span></div>`).join('')}</div></section>`;
@@ -298,6 +300,14 @@ export function ansichtFach(k) {
     </div>
   </div>`;
 }
+const zahl = s => parseFloat(String(s).replace(/[^\d,.-]/g, '').replace(',', '.'));
+/** Obere Grenze aus einem Referenzbereich: „< 4,0“ → 4, „0,4 – 4,0“ → 4, „> 40“ → keine. */
+function obergrenze(ref) {
+  const s = String(ref || '');
+  if (/^\s*>/.test(s)) return NaN;
+  const zahlen = s.match(/\d+(?:[,.]\d+)?/g);
+  return zahlen ? parseFloat(zahlen.at(-1).replace(',', '.')) : NaN;
+}
 function spark(werte, grenze) {
   const W = 600, H = 90, pl = 34, pr = 74, pt = 12, pb = 22;
   const hatGrenze = !isNaN(grenze);
@@ -313,7 +323,7 @@ function spark(werte, grenze) {
     <path d="${linie} L${x(werte.length - 1)},${H - pb} L${x(0)},${H - pb} Z" fill="var(--accent-soft)"/>
     <path d="${linie}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
     ${werte.map((w, i) => `<circle cx="${x(i)}" cy="${y(w.w)}" r="${i === werte.length - 1 ? 5 : 3.5}" fill="${hoch(w.w) ? 'var(--crit)' : 'var(--accent)'}"/>
-      <text x="${x(i)}" y="${H - 6}" font-size="11" text-anchor="middle" fill="var(--muted)">${w.d.slice(0, 4)}</text>`).join('')}
+      <text x="${x(i)}" y="${H - 6}" font-size="11" text-anchor="middle" fill="var(--muted)">${werte.length > 5 ? w.d.slice(5, 7) + '/' + w.d.slice(2, 4) : w.d.slice(0, 4)}</text>`).join('')}
     <text x="${x(werte.length - 1) + 9}" y="${y(letzte.w) + 4}" font-size="12" font-weight="700" fill="${hoch(letzte.w) ? 'var(--crit)' : 'var(--fg)'}">${String(letzte.w).replace('.', ',')}</text>
   </svg>`;
 }
@@ -533,6 +543,12 @@ export function ansichtEinstellungen() {
           <div class="knoepfe" style="margin-top:14px">${verbunden ? '<button class="btn" data-aktion="trennen">Verbindung trennen</button>' : '<button class="btn primaer" data-aktion="verbinden">Verbinden</button>'}
           <button class="btn" data-aktion="export">Akte als Datei speichern</button><button class="btn" data-aktion="abmelden-loeschen">Abmelden und Daten von diesem Gerät entfernen</button></div>`
         : `<p class="small" style="margin:0 0 12px">Du siehst Beispieldaten. Nichts davon wird gespeichert.</p><div class="knoepfe">${googleDrive.eingerichtet() || new URLSearchParams(location.search).has('test') ? '<button class="btn primaer" data-aktion="verbinden">Mit Google verbinden</button>' : ''}<button class="btn" data-aktion="begruessung">Zur Startseite</button></div>`}
+      </section>
+      <section class="panel"><div class="panel-kopf"><h2>Daten übernehmen</h2></div>
+        <p class="small" style="margin:0 0 12px">Ergänzt die Akte um Einträge aus einer Import-Datei (.json), z. B. aus dem OneNote-Gesundheitstagebuch. Vorhandenes wird nicht gelöscht, doppelte Einträge werden übersprungen. Vor der Übernahme siehst du, was hinzukommt.</p>
+        <label class="btn" for="import-datei">${svg('hochladen')}Import-Datei wählen …</label>
+        <input id="import-datei" type="file" accept=".json,application/json" hidden>
+        ${(a.importe || []).length ? `<p class="small muted" style="margin:10px 0 0">Bisher übernommen: ${a.importe.map(i => `${esc(i.quelle)} (${datum(i.datum.slice(0, 10))})`).join(', ')}</p>` : ''}
       </section>
       <section class="panel"><div class="panel-kopf"><h2>Über</h2></div><p class="small" style="margin:0">Gesundheitsakte, Version ${VERSION} vom ${STAND}. Die App läuft ohne eigenen Server; alle Daten liegen in deinem Google Drive und zwischengespeichert in diesem Browser.</p></section>
     </div>
