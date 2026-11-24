@@ -168,7 +168,8 @@ Werte bitte das beigefügte Dokument aus.`;
 }
 
 /** Eine Datei aus Drive von Claude auswerten lassen. Liefert das geprüfte Ergebnis. */
-async function anfragen(f) {
+/** Datei an Claude schicken. Standard: Befund-Auswertung; andere Auswertungen (z. B. TK) geben system, schema und text mit. */
+export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: auftrag = null, maxTokens = 16000 } = {}) {
   if (!schluessel) await schluesselLaden();
   if (!schluessel) throw Object.assign(new Error('Für die Auswertung fehlt der Claude-API-Schlüssel (Einstellungen → Befund-Auswertung).'), { name: 'KeinSchluessel' });
   const art = dateiArt(f);
@@ -181,13 +182,13 @@ async function anfragen(f) {
     : { type: 'image', source: { type: 'base64', media_type: art.mime, data: daten } };
   const anfrage = {
     model: KI_MODELL,
-    max_tokens: 16000,
+    max_tokens: maxTokens,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     thinking: { type: 'adaptive' },
-    output_config: { effort: 'high', format: { type: 'json_schema', schema: schema(Z.akte) } },
-    system: SYSTEM,
-    messages: [{ role: 'user', content: [block, { type: 'text', text: kontext(Z.akte, f) }] }],
+    output_config: { effort: 'high', format: { type: 'json_schema', schema: sch || schema(Z.akte) } },
+    system,
+    messages: [{ role: 'user', content: [block, { type: 'text', text: auftrag || kontext(Z.akte, f) }] }],
   };
 
   let antwort, A = null;
@@ -377,6 +378,7 @@ export function neueEintraegeAnlegen(a, v, datum) {
 // ---------------------------------------------------------------- Testmodus (?test): Claude wird nur nachgeahmt
 async function testAntwort(anfrage) {
   await new Promise(r => setTimeout(r, 300));
+  if (anfrage.output_config.format.schema.properties.eintraege) return (await import('./tk.js')).tkTestAntwort(anfrage);
   const enumVon = n => anfrage.output_config.format.schema.properties[n].enum.filter(Boolean);
   const kat = enumVon('kat').includes('hausarzt') ? 'hausarzt' : enumVon('kat')[0];
   const r = {

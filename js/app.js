@@ -12,6 +12,7 @@ import { vorschlaegeErstellen } from './erkennung.js';
 import { vorschlagUebernehmen } from './formulare.js';
 import { schluesselLaden, schluesselEntfernen, schluesselVergessen, eingangAuswerten, eingangAutomatisch, dokumentAuswerten, offeneDokumente, stapelAuswerten, stapelStoppen } from './auswertung.js';
 import { duplikatVon } from './speicher.js';
+import { tkAuslesen, tkAbgleich, tkUebernehmen, tkZeitraumAnpassen, tkIgnorieren } from './tk.js';
 
 /** Dateien in den Eingang laden (Ziehen, Auswahl, Teilen) – mit Fortschritt. */
 async function hochladen(dateien) {
@@ -221,7 +222,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc],[data-tk-lesen],[data-tk-neu],[data-tk-ignorieren],[data-tk-zeigen],[data-tk-zeitraum]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -250,6 +251,16 @@ document.addEventListener('click', async ev => {
     catch (e) { toast(e.message, 'fehler'); if (e.name === 'KeinSchluessel') location.hash = '#einstellungen'; }
     zeichnen(); return;
   }
+  if (d.tkLesen) {
+    const neu = () => { if (ansichtId() === 'tk' && !$('#ebene form')) zeichnen(); };
+    try { const r = await tkAuslesen(d.tkLesen, neu); if (r) toast(`${r.eintraege} Arztkontakte mit ${r.diagnosen} Diagnosen ausgelesen.`); }
+    catch (e) { toast(e.message, 'fehler'); }
+    neu(); return;
+  }
+  if (d.tkNeu) { if (tkUebernehmen(d.tkNeu)) { zeichnen(); toast('Als Erkrankung in den Verlauf übernommen.'); } return; }
+  if (d.tkIgnorieren) { tkIgnorieren(d.tkIgnorieren); zeichnen(); toast('Wird nicht mehr vorgeschlagen.'); return; }
+  if (d.tkZeigen) { tkIgnorieren(d.tkZeigen, false); zeichnen(); return; }
+  if (d.tkZeitraum) { if (tkZeitraumAnpassen(d.tkZeitraum)) { zeichnen(); toast('Zeitraum der Erkrankung ergänzt.'); } return; }
   if (d.kiDoc) {
     const id = d.kiDoc;
     const offenBlatt = () => { if ($('#ebene .blatt') && !$('#ebene form')) blatt(V.blattDokument(id)); };
@@ -342,6 +353,11 @@ document.addEventListener('click', async ev => {
       return;
     }
     case 'ki-kosten': return blatt(V.blattKosten());
+    case 'tk-alle': {
+      const neu = tkAbgleich(Z.akte).filter(g => g.status === 'neu');
+      neu.forEach(g => tkUebernehmen(g.schluessel));
+      zeichnen(); toast(`${neu.length} Erkrankungen in den Verlauf übernommen.`); return;
+    }
     case 'ki-stopp': stapelStoppen(); toast('Wird nach dem laufenden Dokument angehalten.'); return;
     case 'export': {
       const blob = new Blob([JSON.stringify(Z.akte, null, 1)], { type: 'application/json' });

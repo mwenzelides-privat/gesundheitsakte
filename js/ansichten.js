@@ -6,6 +6,7 @@ import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NA
 import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG, STATUS_ERKRANKUNG, offen, zeitenText } from './modell.js';
 import { personenVorschlaege } from './kalender.js';
 import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand } from './auswertung.js';
+import { tkAbgleich, tkQuartale, tkWirdGelesen, qText } from './tk.js';
 
 const A = () => Z.akte;
 const arzt = id => finde(A(), 'aerzte', id);
@@ -611,6 +612,7 @@ export function ansichtTK() {
   const a = A();
   const quartale = {};
   a.dokumente.filter(d => d.typ === 'TK-Abrechnung').forEach(d => { const m = d.titel.match(/(\d)\.\s*Quartal\s*(\d{4})/); if (m) (quartale[m[2]] ||= {})[m[1]] = true; });
+  for (const q of tkQuartale(a)) { const [j, n] = q.split('-'); (quartale[j] ||= {})[n] = true; }
   const jetztJ = heute().getFullYear(), jetztQ = Math.floor(heute().getMonth() / 3) + 1;
   const jahre = [jetztJ - 3, jetztJ - 2, jetztJ - 1, jetztJ];
   const zelle = (j, q) => {
@@ -623,7 +625,7 @@ export function ansichtTK() {
     ['Google-Konto (privat)', Z.konto ? esc(Z.konto.email) : 'Anmeldung, nur du hast Zugriff', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
     ['Google Drive', 'Ablage und Datenbestand akte.json', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
     ['Google Kalender', 'Arzttermine lesen (Erinnerungen schreiben ab Iteration 7)', Z.modus === 'konto' ? (Z.drive?.kalenderErlaubt?.() ? 'ok' : 'getrennt') : 3],
-    ['Befund-Auswertung (Claude)', 'Dokumente lesen, Kurzfassung, Werte, Einordnung', 5],
+    ['Befund-Auswertung (Claude)', 'Dokumente lesen, Kurzfassung, Werte, Einordnung, TK-Diagnosen', kiBereit() ? 'ok' : Z.modus === 'konto' ? 'getrennt' : 5],
     ['Google Maps', 'Adressen, Telefon, Sprechzeiten', 8],
     ['Hintergrunddienst (Apps Script)', 'nachts: Eingang, Maps-Abgleich, Erinnerungen', 9],
   ];
@@ -632,7 +634,7 @@ export function ansichtTK() {
   <div class="kopf"><div><h1>TK und Import</h1><p>Die TK bietet keine Schnittstelle, über die ein eigenes Programm die elektronische Patientenakte abrufen kann. Deshalb kommen die Daten über drei Wege in die Akte.</p></div></div>
   <div class="wege">
     <div class="weg"><span class="nr">Weg 1 · laufend</span><h3>Aus der TK-App teilen</h3><p>In der TK-App ein Dokument der Patientenakte öffnen, „Teilen“ antippen und Google Drive, Ordner <span class="mono">60 Gesundheit/Gesundheitsakte/00_Eingang</span> wählen. Unter Dokumente → Eingang ordnest du es ein.</p><span class="pill st-bald">am S26 noch zu prüfen</span></div>
-    <div class="weg"><span class="nr">Weg 2 · vierteljährlich</span><h3>Behandlungsübersicht</h3><p>Die Abrechnungsdaten der TK enthalten jeden Arztkontakt mit Diagnosen (ICD-10). Als Dokument der Art „TK-Abrechnung“ mit Titel „TK-Behandlungsübersicht 2. Quartal 2026“ ablegen, dann erscheint es rechts.</p><span class="pill st-spaeter">Auswertung ab Iteration 6</span></div>
+    <div class="weg"><span class="nr">Weg 2 · vierteljährlich</span><h3>Behandlungsübersicht</h3><p>Die Abrechnungsdaten der TK enthalten jeden Arztkontakt mit Diagnosen (ICD-10). Als PDF in den Eingang legen und als „TK-Abrechnung“ ablegen; unten „Diagnosen auslesen“ – Claude liest sie, und du entscheidest, was in den Krankheitsverlauf kommt.</p><span class="pill st-ok">Auswertung mit Claude</span></div>
     <div class="weg"><span class="nr">Weg 3 · einmalig</span><h3>Auskunft für alle Jahre</h3><p>Leistungs- und Kostenauskunft nach § 305 SGB V bzw. Datenauskunft nach Art. 15 DSGVO bei der TK anfordern. Liefert die Historie, auch aus der Zeit vor der Patientenakte.</p><span class="pill st-spaeter">noch nicht angefordert</span></div>
   </div>
   <div class="grid2">
@@ -641,7 +643,44 @@ export function ansichtTK() {
       ${jahre.map(j => `<b class="num">${j}</b>${[1, 2, 3, 4].map(q => zelle(j, q)).join('')}`).join('')}</div></section>
     <section class="panel verbindungen"><div class="panel-kopf"><h2>Verbindungen</h2></div>
       <div class="liste">${verb.map(([n, s, st]) => `<div class="zeile"><div class="grow"><div class="t">${n}</div><div class="s">${s}</div></div>${pillVerb(st)}</div>`).join('')}</div></section>
-  </div>`;
+  </div>
+  ${tkUnterlagen(a)}
+  ${tkDiagnosen(a)}`;
+}
+
+function tkUnterlagen(a) {
+  const docs = a.dokumente.filter(d => d.typ === 'TK-Abrechnung' || d.kat === 'tk').sort(nachDatum).reverse();
+  const darf = Z.modus === 'konto' && kiBereit();
+  return `<section class="panel"><div class="panel-kopf"><h2>TK-Unterlagen</h2><span class="small muted">${docs.length} Dokumente</span></div>
+    ${docs.length ? `<div class="liste">${docs.map(d => `<div class="zeile" style="align-items:center"><div class="grow" data-doc="${d.id}" style="cursor:pointer"><div class="t">${esc(d.titel)}</div>
+      <div class="s">${datum(d.datum)} · ${esc(d.typ)}${d.tkGelesen ? ` · Diagnosen ausgelesen am ${datum(d.tkGelesen)}${d.tkZeitraum ? ` (${qText(d.tkZeitraum[0])} bis ${qText(d.tkZeitraum[1])})` : ''}` : ''}</div></div>
+      ${tkWirdGelesen(d.id) ? '<span class="small"><span class="dreher"></span> wird gelesen …</span>'
+        : d.driveId && darf ? `<button class="btn klein${d.tkGelesen ? '' : ' primaer'}" data-tk-lesen="${d.id}">${d.tkGelesen ? 'Neu auslesen' : 'Diagnosen auslesen'}</button>` : ''}</div>`).join('')}</div>`
+      : '<p class="small muted" style="margin:0">Noch keine TK-Unterlagen abgelegt. Behandlungsübersicht oder Auskunft als PDF in den Eingang legen und als Art „TK-Abrechnung“ ablegen.</p>'}
+    ${docs.length && Z.modus === 'konto' && !kiBereit() ? '<p class="small muted" style="margin:10px 0 0">Zum Auslesen braucht die App den Claude-Schlüssel (Einstellungen → Befund-Auswertung).</p>' : ''}
+  </section>`;
+}
+
+function tkDiagnosen(a) {
+  const gruppen = tkAbgleich(a);
+  if (!gruppen.length) return '';
+  const nach = st => gruppen.filter(g => g.status === st);
+  const neu = nach('neu'), bekannt = nach('bekannt'), verdacht = nach('verdacht'), anlass = nach('anlass'), ign = nach('ignoriert');
+  const zeitraum = g => `${qText(g.quartale[0])}${g.quartale.length > 1 ? ' bis ' + qText(g.quartale.at(-1)) : ''} · ${g.quartale.length} ${g.quartale.length === 1 ? 'Quartal' : 'Quartale'}${g.laeuft ? ' · zuletzt kürzlich' : ''}`;
+  const zeile = (g, knoepfe) => `<div class="zeile" style="align-items:center">${mark(g.kat)}<div class="grow"><div class="t"><span class="mono">${esc(g.icd)}</span> ${esc(g.text)}</div>
+    <div class="s">${zeitraum(g)}${g.praxen.length ? ' · ' + esc(g.praxen.slice(0, 3).join(', ')) : ''}${g.codes.length > 1 ? ` · auch ${esc(g.codes.filter(c => c !== g.icd).join(', '))}` : ''}</div></div><div class="knoepfe" style="flex:none">${knoepfe}</div></div>`;
+  const bekanntZeile = g => { const e = erk(g.erk); return zeile(g, g.erweitert
+    ? `<button class="btn klein" data-tk-zeitraum="${g.schluessel}" title="${esc(e?.titel || '')}">Zeitraum ergänzen${g.erweitert.von ? ' ab ' + datum(g.erweitert.von) : ''}</button>`
+    : `<button class="link" data-erk="${g.erk}">${esc(e?.titel || 'Erkrankung')}</button>`); };
+  return `<section class="panel stack" style="gap:12px"><div class="panel-kopf" style="margin:0"><h2>Diagnosen aus den TK-Abrechnungsdaten</h2><span class="small muted">${gruppen.length} ICD-Gruppen</span></div>
+    <p class="small muted" style="margin:0">Zusammengefasst nach ICD-Gruppe (z. B. M51 = Bandscheibenschäden). Ärzte kodieren in der Abrechnung oft weiter, was nur einmal behandelt wurde – bitte prüfen, bevor du übernimmst.</p>
+    ${neu.length ? `<div class="panel-kopf" style="margin:4px 0 0"><h3 style="margin:0">Neu für den Krankheitsverlauf · ${neu.length}</h3>${neu.length > 1 ? `<button class="btn klein" data-aktion="tk-alle">Alle ${neu.length} übernehmen</button>` : ''}</div>
+      <div class="liste">${neu.map(g => zeile(g, `<button class="btn klein primaer" data-tk-neu="${g.schluessel}">Übernehmen</button><button class="btn klein" data-tk-ignorieren="${g.schluessel}">Ignorieren</button>`)).join('')}</div>` : '<p class="small" style="margin:0">Alle Diagnosen sind schon im Krankheitsverlauf oder bewusst ignoriert.</p>'}
+    ${bekannt.length ? `<h3 style="margin:8px 0 0">Schon im Verlauf · ${bekannt.length}</h3><div class="liste">${bekannt.map(bekanntZeile).join('')}</div>` : ''}
+    ${verdacht.length ? `<h3 style="margin:8px 0 0">Nur als Verdacht kodiert · ${verdacht.length}</h3><div class="liste">${verdacht.map(g => zeile(g, `<button class="btn klein" data-tk-neu="${g.schluessel}">Trotzdem übernehmen</button><button class="btn klein" data-tk-ignorieren="${g.schluessel}">Ignorieren</button>`)).join('')}</div>` : ''}
+    ${anlass.length ? `<details><summary class="small">Vorsorge, Impfungen und andere Anlässe · ${anlass.length} (kommen nicht in den Verlauf)</summary><div class="liste" style="margin-top:8px">${anlass.map(g => zeile(g, '')).join('')}</div></details>` : ''}
+    ${ign.length ? `<details><summary class="small">Ignoriert · ${ign.length}</summary><div class="liste" style="margin-top:8px">${ign.map(g => zeile(g, `<button class="btn klein" data-tk-zeigen="${g.schluessel}">Wieder vorschlagen</button>`)).join('')}</div></details>` : ''}
+  </section>`;
 }
 
 // ======================================================================
