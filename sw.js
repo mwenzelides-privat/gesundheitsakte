@@ -1,6 +1,6 @@
 // Service Worker: hält die App-Dateien offline bereit und nimmt am Handy geteilte Dateien entgegen.
 // Daten aus Google Drive werden nie zwischengespeichert.
-const CACHE = 'gesundheitsakte-0.7.0';
+const CACHE = 'gesundheitsakte-0.7.1';
 const GETEILT = 'gesundheitsakte-geteilt';   // geteilte Dateien bis zur Ablage im Eingang
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -12,8 +12,10 @@ const DATEIEN = [
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(DATEIEN)).then(() => self.skipWaiting()));
 });
+// Nur eigene alte Speicher löschen: unter derselben Adresse (mwenzelides-privat.github.io) liegt auch die Finanzen-App,
+// deren Speicher („finanzen-…“) bleiben unberührt.
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== GETEILT).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('gesundheitsakte-') && k !== CACHE && k !== GETEILT).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', e => {
