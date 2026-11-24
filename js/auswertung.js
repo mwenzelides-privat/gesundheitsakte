@@ -217,6 +217,11 @@ function verbrauchMerken(u) {
     v.anzahl++;
     v.eingabe += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
     v.ausgabe += u.output_tokens || 0;
+    // zusätzlich je Monat, für die Kostenübersicht
+    const m = ((v.monate ||= {})[heuteIso().slice(0, 7)] ||= { anzahl: 0, eingabe: 0, ausgabe: 0 });
+    m.anzahl++;
+    m.eingabe += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+    m.ausgabe += u.output_tokens || 0;
   });
 }
 /** Geschätzte Kosten in US-Dollar. */

@@ -341,6 +341,7 @@ document.addEventListener('click', async ev => {
       toast(r.abbruch ? `Abgebrochen nach ${r.fertig} Dokumenten: ${r.abbruch}` : `${r.fertig === 1 ? 'Ein Dokument' : r.fertig + ' Dokumente'} ausgewertet${r.fehler ? `, ${r.fehler} nicht lesbar` : ''}.`, r.abbruch ? 'fehler' : '');
       return;
     }
+    case 'ki-kosten': return blatt(V.blattKosten());
     case 'ki-stopp': stapelStoppen(); toast('Wird nach dem laufenden Dokument angehalten.'); return;
     case 'export': {
       const blob = new Blob([JSON.stringify(Z.akte, null, 1)], { type: 'application/json' });

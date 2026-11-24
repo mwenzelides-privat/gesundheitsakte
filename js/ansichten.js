@@ -123,8 +123,10 @@ export function ansichtStart() {
   const aktive = a.erkrankungen.filter(e => e.status !== 'abgeschlossen').sort((x, y) => y.von.localeCompare(x.von));
   const zuletzt = [...a.dokumente].sort(nachDatum).reverse().slice(0, 5);
 
+  const kv = a.einstellungen?.kiVerbrauch;
+  const kostenKnopf = Z.modus === 'konto' && (kv || kiBereit()) ? `<button class="btn klein" data-aktion="ki-kosten" title="Kosten der Befund-Auswertung mit Claude">${svg('ki')}Claude-Kosten: ${dollar(kosten(kv))}</button>` : '';
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>Guten Tag${Z.modus === 'konto' && rufname(a.profil) ? ', ' + esc(rufname(a.profil)) : ''}</h1><p>${wtag}${a.profil.jahrgang ? ` · Jahrgang ${a.profil.jahrgang}` : ''}${a.profil.kasse ? ' · ' + esc(a.profil.kasse) : ''}</p></div></div>
+  <div class="kopf"><div><h1>Guten Tag${Z.modus === 'konto' && rufname(a.profil) ? ', ' + esc(rufname(a.profil)) : ''}</h1><p>${wtag}${a.profil.jahrgang ? ` · Jahrgang ${a.profil.jahrgang}` : ''}${a.profil.kasse ? ' · ' + esc(a.profil.kasse) : ''}</p></div>${kostenKnopf}</div>
   ${ersteSchritte}
   ${hinweise ? `<section class="hinweise" aria-label="Braucht Aufmerksamkeit">${hinweise}</section>` : ''}
   <div class="grid2">
@@ -147,6 +149,32 @@ export function ansichtStart() {
         ${zuletzt.length ? `<div class="liste">${zuletzt.map(docZeile).join('')}</div>` : leer('Noch keine Dokumente.', 'dokument', 'Dokument ablegen')}</section>
     </div>
   </div>`;
+}
+
+const dollar = n => (n || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
+const tausend = n => (n || 0).toLocaleString('de-DE');
+/** Blatt mit den Kosten der Befund-Auswertung (aus der Übersicht). */
+export function blattKosten() {
+  const a = A();
+  const v = a.einstellungen?.kiVerbrauch;
+  const monate = Object.entries(v?.monate || {}).sort((x, y) => y[0].localeCompare(x[0]));
+  const ausClaudeCode = a.dokumente.filter(d => String(d.kiModell || '').includes('Claude Code')).length;
+  const monatName = m => `${MON_LANG[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
+  return `${blattKopf('Befund-Auswertung', 'Kosten für Claude')}
+    <div class="kennzahlen" style="margin-bottom:14px"><div><b class="num">${dollar(kosten(v))}</b><span>geschätzt gesamt</span></div>
+      <div><b class="num">${tausend(v?.anzahl)}</b><span>Auswertungen</span></div>
+      <div><b class="num">${v?.anzahl ? dollar(kosten(v) / v.anzahl) : '–'}</b><span>je Dokument</span></div></div>
+    <dl class="meta-grid">
+      <dt>Seit</dt><dd>${v?.seit ? datum(v.seit) : '–'}</dd>
+      <dt>Eingabe</dt><dd>${tausend(v?.eingabe)} Token (4 $ je Million)</dd>
+      <dt>Ausgabe</dt><dd>${tausend(v?.ausgabe)} Token (20 $ je Million)</dd>
+      <dt>Modell</dt><dd>Claude Opus 5.5</dd>
+    </dl>
+    ${monate.length ? `<section class="panel" style="padding:12px;margin-top:14px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Monat</th><th>Auswertungen</th><th>Kosten</th></tr></thead><tbody>
+      ${monate.map(([m, x]) => `<tr style="cursor:default"><td>${monatName(m)}</td><td class="num">${x.anzahl}</td><td class="num">${dollar(kosten(x))}</td></tr>`).join('')}
+    </tbody></table></div></section>` : ''}
+    <p class="small muted" style="margin:14px 0 0">Die Beträge sind aus den verbrauchten Token geschätzt. Verbindlich ist die Abrechnung in der Anthropic Console (Billing/Usage), dort in US-Dollar.${ausClaudeCode ? ` ${ausClaudeCode} Dokumente wurden einmalig in Claude Code ausgewertet und sind hier nicht enthalten.` : ''}${monate.length ? '' : ' Die Aufteilung nach Monaten beginnt mit Version 0.6.1.'}</p>
+    <div class="knoepfe" style="margin-top:14px"><a class="btn" href="#einstellungen" data-zu>Einstellungen der Auswertung</a></div>`;
 }
 
 /** Anrede: eingetragener Rufname, sonst erster Vorname ohne Titel („Dr. med. Marcus W.“ → „Marcus“). */
