@@ -169,7 +169,7 @@ Werte bitte das beigefügte Dokument aus.`;
 
 /** Eine Datei aus Drive von Claude auswerten lassen. Liefert das geprüfte Ergebnis. */
 /** Datei an Claude schicken. Standard: Befund-Auswertung; andere Auswertungen (z. B. TK) geben system, schema und text mit. */
-export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: auftrag = null, maxTokens = 16000 } = {}) {
+export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: auftrag = null, maxTokens = 16000, art: auftragsArt = 'Befund' } = {}) {
   if (!schluessel) await schluesselLaden();
   if (!schluessel) throw Object.assign(new Error('Für die Auswertung fehlt der Claude-API-Schlüssel (Einstellungen → Befund-Auswertung).'), { name: 'KeinSchluessel' });
   const art = dateiArt(f);
@@ -201,18 +201,27 @@ export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: a
     }
   } catch (e) { throw new Error(fehlerText(e, A)); }
 
-  verbrauchMerken(antwort.usage);
+  const beleg = verbrauchMerken(antwort.usage, { datei: f.name, art: auftragsArt, modell: antwort.model });
   if (antwort.stop_reason === 'refusal') throw new Error('Claude hat die Auswertung dieses Dokuments abgelehnt. Bitte selbst einordnen.');
   if (antwort.stop_reason === 'max_tokens') throw new Error('Das Dokument ist zu umfangreich für eine Auswertung am Stück.');
   const text = antwort.content.find(b => b.type === 'text')?.text;
   let r;
   try { r = JSON.parse(text); } catch { throw new Error('Die Antwort von Claude war unvollständig. Bitte noch einmal versuchen.'); }
   const ersatz = (antwort.usage?.iterations || []).some(x => x.type === 'fallback_message');
-  return { r, modell: antwort.model, ersatz };
+  return { r, modell: antwort.model, ersatz, zeit: beleg.zeit, kosten: beleg.usd };
 }
 
-function verbrauchMerken(u) {
-  if (!u) return;
+/** Verbrauch zählen (gesamt, je Monat) und jede Auswertung mit Zeitpunkt und Kosten protokollieren. */
+function verbrauchMerken(u, { datei = '', art = 'Befund', modell = '' } = {}) {
+  const zeit = new Date().toISOString();
+  if (!u) return { zeit, usd: null };
+  const eingabe = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+  const usd = Math.round(kosten({ eingabe, ausgabe: u.output_tokens || 0 }) * 10000) / 10000;
+  aendern(a => {
+    const p = ((a.einstellungen.kiVerbrauch ||= { anzahl: 0, eingabe: 0, ausgabe: 0, seit: heuteIso() }).protokoll ||= []);
+    p.push({ zeit, datei, art, modell, eingabe, ausgabe: u.output_tokens || 0, usd });
+    if (p.length > 300) p.splice(0, p.length - 300);
+  });
   aendern(a => {
     const v = (a.einstellungen.kiVerbrauch ||= { anzahl: 0, eingabe: 0, ausgabe: 0, seit: heuteIso() });
     v.anzahl++;
@@ -224,6 +233,7 @@ function verbrauchMerken(u) {
     m.eingabe += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
     m.ausgabe += u.output_tokens || 0;
   });
+  return { zeit, usd };
 }
 /** Geschätzte Kosten in US-Dollar. */
 export const kosten = v => v ? (v.eingabe * KI_PREIS.eingabe + v.ausgabe * KI_PREIS.ausgabe) / 1e6 : 0;
@@ -232,7 +242,7 @@ export const kosten = v => v ? (v.eingabe * KI_PREIS.eingabe + v.ausgabe * KI_PR
 const gueltigesDatum = d => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= '1950-01-01' && d <= heuteIso();
 const sauber = s => String(s || '').trim();
 
-function aufbereiten(akte, { r, modell, ersatz }, vorher = {}) {
+function aufbereiten(akte, { r, modell, ersatz, zeit, kosten: usd }, vorher = {}) {
   const hat = (liste, id) => id && akte[liste].some(x => x.id === id);
   // Schon vorhanden, nur nicht erkannt? Dann den vorhandenen Eintrag nehmen statt einen neuen vorzuschlagen.
   const gleich = (liste, feld, name) => akte[liste].find(x => sauber(x[feld]).toLowerCase() === sauber(name).toLowerCase())?.id;
@@ -260,6 +270,8 @@ function aufbereiten(akte, { r, modell, ersatz }, vorher = {}) {
     sicherheit: Math.max(0, Math.min(100, Math.round(Number(r.sicherheit) || 0))),
     ki: true,
     kiModell: modell,
+    kiZeit: zeit,
+    kiKosten: usd,
     gruende: [ersatz ? `ausgewertet von Claude (Ersatzmodell ${modell})` : 'ausgewertet von Claude'],
   };
 }
@@ -287,19 +299,29 @@ export async function eingangAuswerten(f, nachher = () => {}) {
  * Neue Dateien im Eingang automatisch auswerten (wenn eingeschaltet und ein Schlüssel da ist).
  * Ausgelassen: Duplikate, schon ausgewertete Dateien und solche, bei denen es schon einen Fehler gab.
  */
-let automatikLaeuft = false;
-export async function eingangAutomatisch(istDuplikat, nachher = () => {}) {
-  if (automatikLaeuft || !Z.akte || Z.akte.einstellungen?.kiAutomatisch === false) return;
+let automatikLaeuft = false, nochmal = false;
+export async function eingangAutomatisch(istDuplikat, nachher = () => {}, melden = () => {}) {
+  if (!Z.akte || Z.akte.einstellungen?.kiAutomatisch === false) return;
+  // Läuft schon: nach dem aktuellen Dokument noch einmal nachsehen (z. B. zweite Datei kam während der Auswertung dazu)
+  if (automatikLaeuft) { nochmal = true; return; }
   if (!(await schluesselLaden())) return;
   automatikLaeuft = true;
+  const erledigt = new Set();
   try {
-    for (const f of [...(Z.eingang || [])]) {
-      const v = Z.vorschlaege[f.id];
-      if (!v || v.ki || v.kiFehler || istDuplikat(f) || dateiArt(f).fehler) continue;
-      try { await eingangAuswerten(f, nachher); }
-      catch (e) { if (/Schlüssel|Guthaben|Verbindung|Anfragen/.test(e.message)) throw e; }
+    for (;;) {
+      nochmal = false;
+      for (const f of Z.eingang || []) {   // nicht auswertbare Dateien: Grund auf der Karte zeigen
+        const v = Z.vorschlaege[f.id], art = dateiArt(f);
+        if (v && !v.ki && !v.kiFehler && art.fehler) v.kiFehler = art.fehler;
+      }
+      const f = (Z.eingang || []).find(x => { const v = Z.vorschlaege[x.id]; return v && !v.ki && !v.kiFehler && !erledigt.has(x.id) && !istDuplikat(x); });
+      if (!f) { if (nochmal) continue; break; }
+      erledigt.add(f.id);
+      melden(`Claude wertet „${f.name}“ aus …`);
+      try { const v = await eingangAuswerten(f, nachher); if (v) melden(`„${v.titel}“ ausgewertet – bitte unter Dokumente prüfen und übernehmen.`); }
+      catch (e) { melden(`„${f.name}“ konnte nicht ausgewertet werden: ${e.message}`, 'fehler'); if (/Schlüssel|Guthaben|Verbindung|Anfragen/.test(e.message)) break; }
     }
-  } finally { automatikLaeuft = false; }
+  } finally { automatikLaeuft = false; nachher(); }
 }
 
 // ---------------------------------------------------------------- Abgelegte Dokumente
@@ -317,7 +339,7 @@ export async function dokumentAuswerten(docId) {
       const x = finde(a, 'dokumente', docId); if (!x) return;
       // Eine selbst geschriebene Notiz (z. B. aus dem Gesundheitstagebuch) bleibt als Notiz erhalten
       if (x.kurz && !x.ki && !x.notiz) x.notiz = x.kurz;
-      Object.assign(x, { kurz: v.kurz, werte: v.werte, diagnosen: v.diagnosen, naechste: v.naechste, ki: true, kiModell: v.kiModell, kiStand: heuteIso() });
+      Object.assign(x, { kurz: v.kurz, werte: v.werte, diagnosen: v.diagnosen, naechste: v.naechste, ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit, kiKosten: v.kiKosten });
       if (!x.arzt && v.arzt) x.arzt = v.arzt;
       if (!x.erk && v.erk) x.erk = v.erk;
     });

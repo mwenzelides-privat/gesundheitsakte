@@ -174,7 +174,10 @@ export function blattKosten() {
     ${monate.length ? `<section class="panel" style="padding:12px;margin-top:14px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Monat</th><th>Auswertungen</th><th>Kosten</th></tr></thead><tbody>
       ${monate.map(([m, x]) => `<tr style="cursor:default"><td>${monatName(m)}</td><td class="num">${x.anzahl}</td><td class="num">${dollar(kosten(x))}</td></tr>`).join('')}
     </tbody></table></div></section>` : ''}
-    <p class="small muted" style="margin:14px 0 0">Die Beträge sind aus den verbrauchten Token geschätzt. Verbindlich ist die Abrechnung in der Anthropic Console (Billing/Usage), dort in US-Dollar.${ausClaudeCode ? ` ${ausClaudeCode} Dokumente wurden einmalig in Claude Code ausgewertet und sind hier nicht enthalten.` : ''}${monate.length ? '' : ' Die Aufteilung nach Monaten beginnt mit Version 0.6.1.'}</p>
+    ${(v?.protokoll || []).length ? `<h3 style="margin:16px 0 6px">Letzte Auswertungen</h3><section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Zeitpunkt</th><th>Datei</th><th>Kosten</th></tr></thead><tbody>
+      ${[...v.protokoll].reverse().slice(0, 30).map(p => { const z = new Date(p.zeit); return `<tr style="cursor:default"><td class="num">${z.toLocaleDateString('de-DE')} ${z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</td><td>${esc(p.datei)}${p.art === 'TK' ? ' <span class="muted">(TK)</span>' : ''}</td><td class="num">${dollar(p.usd)}</td></tr>`; }).join('')}
+    </tbody></table></div></section>` : ''}
+    <p class="small muted" style="margin:14px 0 0">Die Beträge sind aus den verbrauchten Token geschätzt. Verbindlich ist die Abrechnung in der Anthropic Console (Billing/Usage), dort in US-Dollar.${ausClaudeCode ? ` ${ausClaudeCode} Dokumente wurden einmalig in Claude Code ausgewertet und sind hier nicht enthalten.` : ''}${monate.length ? '' : ' Die Aufteilung nach Monaten beginnt mit Version 0.6.1.'} Zeitpunkt und Kosten jeder einzelnen Auswertung werden seit Version 0.7.2 gespeichert.</p>
     <div class="knoepfe" style="margin-top:14px"><a class="btn" href="#einstellungen" data-zu>Einstellungen der Auswertung</a></div>`;
 }
 
@@ -521,7 +524,15 @@ function kiInhalt(v, kompakt = false) {
     ${(v.diagnosen || []).length ? `<p class="small" style="margin:0"><b>Diagnosen:</b> ${v.diagnosen.map(d => esc(d.text) + (d.icd ? ` <span class="mono">${esc(d.icd)}</span>` : '')).join(' · ')}</p>` : ''}
     ${kompakt && (v.werte || []).length ? `<p class="small" style="margin:0"><b>${v.werte.length} Werte</b>${auff.length ? `, auffällig: ${auff.map(w => `<span class="wert-hoch">${esc(w[0])} ${esc(w[1])} ${esc(w[2])}</span>`).join(', ')}` : ', alle im Referenzbereich'}</p>` : ''}
     ${(v.naechste || []).length ? `<p class="small" style="margin:0"><b>Empfohlen:</b> ${v.naechste.map(esc).join(' · ')}</p>` : ''}
+    ${kompakt && v.kiZeit ? `<p class="small muted" style="margin:0">Ausgewertet ${kiStempel(v)}</p>` : ''}
   </div>`;
+}
+/** „am 27.11.2026, 06:58 Uhr · 0,09 $“ bzw. Hinweis auf die einmalige Auswertung in Claude Code. */
+function kiStempel(d) {
+  if (String(d.kiModell || '').includes('Claude Code')) return `am ${datum(d.kiStand)} in Claude Code (ohne API-Kosten)`;
+  if (!d.kiZeit) return d.kiStand ? `am ${datum(d.kiStand)}` : '';
+  const z = new Date(d.kiZeit);
+  return `am ${datum(d.kiZeit.slice(0, 10))}, ${z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr${d.kiKosten != null ? ' · ' + dollar(d.kiKosten) : ''}`;
 }
 export function docListeZeichnen() {
   const ziel = document.getElementById('doc-liste'); if (!ziel) return;
@@ -805,7 +816,7 @@ export function blattDokument(id) {
       ${d.quelle ? `<dt>Quelle</dt><dd>${esc(d.quelle)}</dd>` : ''}
       <dt>Datei</dt><dd class="mono">${d.datei ? esc(d.datei) : d.driveId ? 'in Google Drive' : 'keine Datei hinterlegt'}</dd>
     </dl>
-    ${d.kurz || d.ki ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? `Auswertung von Claude${d.kiStand ? ' · ' + datum(d.kiStand) : ''}` : 'Inhalt / Notiz'}</span>${d.ki ? kiInhalt({ ...d, arztNeu: null, erkNeu: null }) : `<p>${esc(d.kurz)}</p>`}</section>` : ''}
+    ${d.kurz || d.ki ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? `Auswertung von Claude · ${kiStempel(d)}` : 'Inhalt / Notiz'}</span>${d.ki ? kiInhalt({ ...d, arztNeu: null, erkNeu: null }) : `<p>${esc(d.kurz)}</p>`}</section>` : ''}
     ${d.notiz ? `<section class="ki"><span class="label">${svg('stift', 'width="14" height="14"')}Eigene Notiz</span><p>${esc(d.notiz)}</p></section>` : ''}
     ${wirdAusgewertet(d.id) ? '<p class="small"><span class="dreher"></span> Claude liest das Dokument …</p>' : ''}
     ${d.werte?.length ? `<section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Wert</th><th>Ergebnis</th><th>Referenz</th></tr></thead><tbody>

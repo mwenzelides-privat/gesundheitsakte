@@ -58,7 +58,7 @@ function erkennungAnstossen() {
   const dateien = [...(Z.eingang || []), ...(Z.unerfasst || [])];
   const neuZeichnen = () => { if (ansichtId() === 'dokumente' && !$('#ebene form')) zeichnen(); };
   if (dateien.length) vorschlaegeErstellen(dateien, neuZeichnen)
-    .then(() => eingangAutomatisch(f => !!duplikatVon(f), neuZeichnen))
+    .then(() => eingangAutomatisch(f => !!duplikatVon(f), neuZeichnen, (text, art) => toast(text, art)))
     .catch(e => { if (e?.name === 'AnmeldungNoetig') statusZeichnen(); else toast(e.message, 'fehler'); });
 }
 /** Schlüssel für die Befund-Auswertung still aus Drive laden (nach dem Verbinden). */

@@ -153,12 +153,22 @@ export function dokumentErkennen(akte, { name = '', text = '', geaendert = null 
 
 // ---------------------------------------------------------------- Vorschläge für Eingang und unerfasste Dateien
 import { Z } from './speicher.js';
-let laeuft = false;
-/** Liest die Dateien (nur PDFs bis 15 MB werden geöffnet) und legt Vorschläge in Z.vorschlaege ab. */
-export async function vorschlaegeErstellen(dateien, nachJederDatei = () => {}) {
-  if (laeuft || !Z.akte || !Z.drive?.verbunden()) return;
-  laeuft = true;
-  try {
+let lauf = null, wartend = null;
+/**
+ * Liest die Dateien (nur PDFs bis 15 MB werden geöffnet) und legt Vorschläge in Z.vorschlaege ab.
+ * Kommt ein Aufruf, während noch gelesen wird, wird er danach nachgeholt (früher ging er verloren).
+ */
+export function vorschlaegeErstellen(dateien, nachJederDatei = () => {}) {
+  if (!Z.akte || !Z.drive?.verbunden()) return Promise.resolve();
+  if (lauf) { wartend = dateien; return lauf; }
+  lauf = (async () => {
+    let liste = dateien;
+    while (liste) { wartend = null; await durchlauf(liste, nachJederDatei); liste = wartend; }
+  })().finally(() => { lauf = null; });
+  return lauf;
+}
+async function durchlauf(dateien, nachJederDatei) {
+  {
     for (const f of dateien) {
       const schluessel = f.id + '|' + (f.modifiedTime || '');
       if (Z.vorschlaege[f.id]?.schluessel === schluessel) continue;
@@ -170,7 +180,7 @@ export async function vorschlaegeErstellen(dateien, nachJederDatei = () => {}) {
       Z.vorschlaege[f.id] = { schluessel, textGefunden: !!text, ...dokumentErkennen(Z.akte, { name: f.name, text, geaendert: f.modifiedTime }) };
       nachJederDatei();
     }
-  } finally { laeuft = false; }
+  }
 }
 
 export { iso };

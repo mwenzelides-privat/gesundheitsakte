@@ -61,7 +61,7 @@ export async function tkAuslesen(docId, nachher = () => {}) {
   laufend.add(docId); nachher();
   try {
     const m = await Z.drive.metadaten(d.driveId);
-    const { r, modell } = await anfragen(m, { system: SYSTEM, schema: SCHEMA, maxTokens: 32000, text: `Dateiname: ${m.name}\nBitte alle Einträge mit Diagnosen auslesen.` });
+    const { r, modell, zeit, kosten } = await anfragen(m, { art: 'TK', system: SYSTEM, schema: SCHEMA, maxTokens: 32000, text: `Dateiname: ${m.name}\nBitte alle Einträge mit Diagnosen auslesen.` });
     const eintraege = (r.eintraege || []).map(e => ({
       quartal: quartalVon(e), von: sauber(e.datum_von), bis: sauber(e.datum_bis), praxis: sauber(e.praxis), fach: sauber(e.fach),
       diagnosen: (e.diagnosen || []).map(x => ({ icd: sauber(x.icd).toUpperCase().replace(/[^A-Z0-9.-]/g, ''), text: sauber(x.text), kennung: x.kennung || '' }))
@@ -77,7 +77,7 @@ export async function tkAuslesen(docId, nachher = () => {}) {
         if (x.kurz && !x.ki && !x.notiz) x.notiz = x.kurz;
         Object.assign(x, {
           kurz: `${r.art || 'TK-Abrechnungsdaten'}: ${eintraege.length} Arztkontakte mit ${anzahl} Diagnosen${quartale.length ? `, ${qText(quartale[0])} bis ${qText(quartale.at(-1))}` : ''}. Die Diagnosen stehen unter „TK und Import“ zum Abgleich mit dem Krankheitsverlauf.`,
-          ki: true, kiModell: modell, kiStand: heuteIso(), tkGelesen: heuteIso(),
+          ki: true, kiModell: modell, kiStand: heuteIso(), kiZeit: zeit, kiKosten: kosten, tkGelesen: heuteIso(),
           tkZeitraum: quartale.length ? [quartale[0], quartale.at(-1)] : null,
         });
       }

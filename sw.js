@@ -1,6 +1,6 @@
 // Service Worker: hält die App-Dateien offline bereit und nimmt am Handy geteilte Dateien entgegen.
 // Daten aus Google Drive werden nie zwischengespeichert.
-const CACHE = 'gesundheitsakte-0.7.1';
+const CACHE = 'gesundheitsakte-0.7.2';
 const GETEILT = 'gesundheitsakte-geteilt';   // geteilte Dateien bis zur Ablage im Eingang
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
