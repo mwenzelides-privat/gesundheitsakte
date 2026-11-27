@@ -7,7 +7,7 @@ import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG,
 import { personenVorschlaege, norm } from './kalender.js';
 import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand, fehlgeschlageneDokumente, STUFE_TEXT } from './auswertung.js';
 import { tkAbgleich, tkQuartale, tkWirdGelesen, qText } from './tk.js';
-import { SCHWERPUNKTE, schwerpunkt, gehoertZu, schwerpunkteVon, erkrankungenVon, blutdruckMessungen, gewichtVerlauf, messquelle, QUELLE_TEXT, liniendiagramm, saeulenQuartale } from './schwerpunkte.js';
+import { SCHWERPUNKTE, schwerpunkt, gehoertZu, schwerpunkteVon, erkrankungenVon, blutdruckMessungen, gewichtVerlauf, messquelle, QUELLE_TEXT, liniendiagramm, saeulenQuartale, spannenJahre } from './schwerpunkte.js';
 import { erinnerungenAn, VORLAUF_STANDARD } from './erinnerungen.js';
 
 const A = () => Z.akte;
@@ -909,9 +909,11 @@ export function blattTermin(id) {
 // ======================================================================
 //  Schwerpunkte (Blutdruck, Rücken)
 // ======================================================================
-export const spFilter = { bd: '24h' };
+export const spFilter = { bd: '24h', quellen: new Set(['praxis', 'uhr', 'heim']) };
 const SP_FARBE = { sys: 'hsl(24 var(--cat-s) var(--cat-l))', dia: 'hsl(212 var(--cat-s) var(--cat-l))', gewicht: 'var(--accent)' };
 const SP_FORM = { praxis: 'voll', uhr: 'hohl', heim: 'quadrat' };
+// Farbe folgt der Messquelle (feste Reihenfolge): Praxis blau, Uhr orange, Heim grün-blau
+const Q_FARBE = { praxis: 'hsl(212 var(--cat-s) var(--cat-l))', uhr: 'hsl(24 var(--cat-s) var(--cat-l))', heim: 'hsl(165 var(--cat-s) var(--cat-l))' };
 const zahlText = n => String(Math.round(n * 10) / 10).replace('.', ',');
 const bdText = p => p ? `${zahlText(p.sys)}/${zahlText(p.dia)}` : '–';
 function spMarken(a, x, typ) {
@@ -932,7 +934,7 @@ function gewText(gew) {
 }
 /** Kacheln in der Übersicht. */
 function spKacheln(a) {
-  const mess = blutdruckMessungen(a).filter(m => m.art === '24h');
+  const mess = blutdruckMessungen(a).filter(m => m.art === '24h' && m.h24);
   const praxis = mess.filter(m => m.quelle === 'praxis').at(-1), letzte = mess.at(-1);
   const gew = gewichtVerlauf(a);
   const rSp = schwerpunkt('ruecken');
@@ -988,17 +990,11 @@ function spBlutdruck(a, sp) {
   const g = spGemeinsam(a, sp);
   const alle = blutdruckMessungen(a);
   const art = spFilter.bd;
-  const wert = m => art === '24h' ? m.h24 : art === 'tag' ? m.tag : m.nacht;
-  const mess = alle.filter(m => wert(m) && (art === '24h' || m.art === '24h'));
   const ziel = { '24h': [130, 80, '24 h'], tag: [135, 85, 'tagsüber'], nacht: [120, 70, 'nachts'] }[art];
   const gew = gewichtVerlauf(a);
-  const von = [mess[0]?.datum, gew[0]?.datum].filter(Boolean).sort()[0];
-  const reihe = (k, name) => ({ name, farbe: SP_FARBE[k], punkte: mess.map(m => ({ datum: m.datum, y: wert(m)[k], form: SP_FORM[m.quelle],
-    titel: `${datum(m.datum)} · ${QUELLE_TEXT[m.quelle]} · ${ziel[2]}: ${bdText(wert(m))} mmHg${m.n ? ` (${m.n} Messungen)` : ''}` })), beschriftung: l => `${zahlText(l.y)}` });
-  const quellen = [...new Set(mess.map(m => m.quelle))];
   const vierundzwanzig = alle.filter(m => m.art === '24h');
-  const praxis = vierundzwanzig.filter(m => m.quelle === 'praxis');
-  const uhr = vierundzwanzig.filter(m => m.quelle === 'uhr');
+  const praxis = vierundzwanzig.filter(m => m.quelle === 'praxis' && m.h24);
+  const uhr = vierundzwanzig.filter(m => m.quelle === 'uhr' && m.h24);
   const ueber = m => m.h24 && (m.h24.sys >= 130 || m.h24.dia >= 80);
   const startGew = gew.filter(p => p.datum >= '2025-01-01')[0] || gew[0], jetztGew = gew.at(-1);
   return `${BEISPIEL()}
@@ -1006,27 +1002,61 @@ function spBlutdruck(a, sp) {
   <div class="kennzahlen sp-zahlen">
     <div><b class="num">${praxis.length ? bdText(praxis.at(-1).h24) : '–'}</b><span>Praxis, 24 h · ${praxis.length ? datum(praxis.at(-1).datum) : 'keine'}</span></div>
     <div><b class="num">${uhr.length ? bdText(uhr.at(-1).h24) : '–'}</b><span>Uhr, 24 h · ${uhr.length ? datum(uhr.at(-1).datum) : 'keine'}</span></div>
-    <div><b class="num">${vierundzwanzig.filter(ueber).length} / ${vierundzwanzig.length}</b><span>24-h-Messungen über 130/80</span></div>
+    <div><b class="num">${vierundzwanzig.filter(ueber).length} / ${vierundzwanzig.filter(m => m.h24).length}</b><span>24-h-Messungen über 130/80</span></div>
     ${jetztGew ? `<div><b class="num">${zahlText(jetztGew.wert)} kg</b><span>${startGew && startGew !== jetztGew ? `${jetztGew.wert - startGew.wert > 0 ? '+' : ''}${zahlText(jetztGew.wert - startGew.wert)} kg seit ${datum(startGew.datum)}` : 'Gewicht'}</span></div>` : ''}
   </div>
-  <section class="panel"><div class="panel-kopf"><h2>Verlauf der Langzeitmessungen</h2>
-    <div class="filter" role="group" aria-label="Zeitraum der Mittelwerte">${[['24h', '24 Stunden'], ['tag', 'Tag'], ['nacht', 'Nacht']].map(([k, t]) => `<button type="button" data-bdart="${k}" aria-pressed="${art === k}">${t}</button>`).join('')}</div></div>
-    ${mess.length ? liniendiagramm({ reihen: [reihe('sys', 'systolisch'), reihe('dia', 'diastolisch')], ziele: [{ y: ziel[0], text: `Ziel ${ziel[2]} < ${ziel[0]}` }, { y: ziel[1], text: `< ${ziel[1]}` }], von, einheit: 'mmHg', label: `Blutdruck-Mittelwerte ${ziel[2]}` })
-      + `<div class="legende"><span><i style="background:${SP_FARBE.sys}"></i>systolisch (oberer Wert)</span><span><i style="background:${SP_FARBE.dia}"></i>diastolisch (unterer Wert)</span>${formLegende(quellen)}</div>`
-      : '<p class="small muted">Noch keine Messwerte für diese Auswahl.</p>'}
-    <p class="small muted" style="margin:8px 0 0">Mittelwerte je Messung in mmHg, gestrichelt die üblichen Zielwerte. Die Messung mit dem Langzeitgerät der Praxis ist medizinisch maßgeblich; Uhr- und Heimmessungen zeigen den Trend.${art === '24h' && quellen.includes('heim') ? ' Heimmessungen sind Monatsmittel aus dem Blutdruck-Tagebuch.' : ''}</p>
-  </section>
-  ${gew.length > 1 ? `<section class="panel"><div class="panel-kopf"><h2>Gewicht</h2><span class="small muted">gleiche Zeitachse wie oben</span></div>
-    ${liniendiagramm({ reihen: [{ name: 'Gewicht', farbe: SP_FARBE.gewicht, punkte: gew.map(p => ({ datum: p.datum, y: p.wert, form: 'voll', titel: `${datum(p.datum)}: ${zahlText(p.wert)} kg` })), beschriftung: l => `${zahlText(l.y)} kg` }], von, einheit: 'kg', hoehe: 200, label: 'Gewichtsverlauf' })}
-  </section>` : ''}
+  ${bdJahre(a, alle, gew, art, ziel)}
   <section class="panel"><div class="panel-kopf"><h2>Alle Messungen</h2><span class="small muted">${alle.length} Einträge</span></div>
     <div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Datum</th><th>Quelle</th><th>24 h</th><th>Tag</th><th>Nacht</th><th>Puls</th><th>Nachtabsenkung</th></tr></thead><tbody>
     ${[...alle].reverse().map(m => `<tr data-doc="${m.doc.id}" tabindex="0"><td class="num">${m.art === 'heim' ? datum(m.datum).slice(3) : datum(m.datum)}</td><td>${esc(QUELLE_TEXT[m.quelle])}</td>
-      <td class="num ${ueber(m) ? 'wert-hoch' : ''}">${bdText(m.h24)}</td><td class="num">${bdText(m.tag)}</td><td class="num">${bdText(m.nacht)}</td><td class="num">${m.puls ? zahlText(m.puls) : '–'}</td>
+      ${m.ohneWerte ? '<td colspan="3" class="muted">Bericht fehlt – Werte in der Praxis anfordern</td>' : `<td class="num ${ueber(m) ? 'wert-hoch' : ''}">${bdText(m.h24)}</td><td class="num">${bdText(m.tag)}</td><td class="num">${bdText(m.nacht)}</td>`}<td class="num">${m.puls ? zahlText(m.puls) : '–'}</td>
       <td class="num">${m.dipping != null ? zahlText(m.dipping) + ' %' + (m.dipping < 10 ? ' <span class="muted small">(zu gering)</span>' : '') : '–'}</td></tr>`).join('')}
     </tbody></table></div></section>
   ${g.erks.length ? `<section class="panel"><div class="panel-kopf"><h2>Erkrankungen</h2></div><div class="liste">${g.erks.map(erkZeile).join('')}</div></section>` : ''}
   ${spListen(g, sp)}`;
+}
+
+/** Jahresmittel als Spannen je Messquelle, Zielbereich, Durchschnitt aller gewählten Messungen und Gewicht je Jahr. */
+function bdJahre(a, alle, gew, art, ziel) {
+  const an = spFilter.quellen;
+  const wert = m => art === '24h' ? m.h24 : art === 'tag' ? m.tag : m.nacht;
+  const mit = alle.filter(m => wert(m) && (art === '24h' || m.art === '24h'));
+  const gewaehlt = mit.filter(m => an.has(m.quelle));
+  const ohne = alle.filter(m => m.ohneWerte && an.has(m.quelle));
+  const jahrVon = m => +m.datum.slice(0, 4);
+  const alleJahre = [...mit, ...alle.filter(m => m.ohneWerte), ...gew].map(m => +m.datum.slice(0, 4));
+  if (!alleJahre.length) return '<section class="panel"><p class="small muted">Noch keine Messwerte.</p></section>';
+  const jahre = []; for (let j = Math.min(...alleJahre); j <= Math.max(...alleJahre, heute().getFullYear()); j++) jahre.push(j);
+  const gruppen = ['praxis', 'uhr', 'heim'].filter(q => an.has(q)).map(q => ({ id: q, name: QUELLE_TEXT[q], farbe: Q_FARBE[q] }));
+  const gewicht = m => m.quelle === 'heim' ? (m.n || 1) : 1;
+  const daten = [];
+  for (const j of jahre) for (const g of gruppen) {
+    const ms = gewaehlt.filter(m => jahrVon(m) === j && m.quelle === g.id); if (!ms.length) continue;
+    const n = ms.reduce((s, m) => s + gewicht(m), 0);
+    const sys = ms.reduce((s, m) => s + wert(m).sys * gewicht(m), 0) / n, dia = ms.reduce((s, m) => s + wert(m).dia * gewicht(m), 0) / n;
+    const liste = ms.map(m => `${m.quelle === 'heim' ? datum(m.datum).slice(3) : datum(m.datum)}: ${bdText(wert(m))}${m.n ? ` (${m.n} Messungen)` : ''}`).join('\n');
+    daten.push({ jahr: j, gruppe: g.id, oben: sys, unten: dia, textOben: String(Math.round(sys)), textUnten: String(Math.round(dia)),
+      titel: `${j} · ${g.name} · ${ziel[2]}\nMittel ${Math.round(sys)}/${Math.round(dia)} mmHg aus ${ms.length} ${ms.length === 1 ? 'Messung' : 'Messungen'}\n${liste}` });
+  }
+  const schnitt = k => gewaehlt.length ? gewaehlt.reduce((s, m) => s + wert(m)[k], 0) / gewaehlt.length : null;
+  const ss = schnitt('sys'), sd = schnitt('dia');
+  const ohneDaten = art === '24h' ? ohne.map(m => ({ jahr: jahrVon(m), gruppe: m.quelle, titel: `${datum(m.datum)} · ${QUELLE_TEXT[m.quelle]}: Messung bekannt, Bericht mit Werten fehlt` })) : [];
+  const knoepfe = ['praxis', 'uhr', 'heim'].map(q => `<button type="button" data-bdquelle="${q}" aria-pressed="${an.has(q)}"><i class="sp-q" style="background:${Q_FARBE[q]}"></i>${q === 'praxis' ? 'Praxis' : q === 'uhr' ? 'Huawei-Uhr' : 'Heim'}</button>`).join('');
+  // Gewicht je Jahr: Spanne vom niedrigsten zum höchsten Wert, Kreis = Jahresmittel
+  const gDaten = jahre.map(j => { const ps = gew.filter(p => +p.datum.slice(0, 4) === j); if (!ps.length) return null;
+    const lo = Math.min(...ps.map(p => p.wert)), hi = Math.max(...ps.map(p => p.wert)), mi = ps.reduce((s, p) => s + p.wert, 0) / ps.length;
+    return { jahr: j, gruppe: 'gewicht', oben: hi, unten: lo, mitte: mi, textOben: zahlText(Math.round(mi * 10) / 10), titel: `${j} · Gewicht\nMittel ${zahlText(Math.round(mi * 10) / 10)} kg, ${zahlText(lo)}–${zahlText(hi)} kg aus ${ps.length} Messungen` }; }).filter(Boolean);
+  return `<section class="panel"><div class="panel-kopf"><h2>Blutdruck je Jahr</h2>
+    <div class="filter" role="group" aria-label="Zeitraum der Mittelwerte">${[['24h', '24 Stunden'], ['tag', 'Tag'], ['nacht', 'Nacht']].map(([k, t]) => `<button type="button" data-bdart="${k}" aria-pressed="${art === k}">${t}</button>`).join('')}</div></div>
+    <div class="filter sp-quellen" role="group" aria-label="Messquellen">${knoepfe}</div>
+    ${gruppen.length && (daten.length || ohneDaten.length) ? spannenJahre({ jahre, gruppen, daten, ohne: ohneDaten, band: { von: ziel[1], bis: ziel[0] },
+        linien: ss ? [{ y: ss, text: `Ø ${Math.round(ss)}` }, { y: sd, text: `Ø ${Math.round(sd)}` }] : [], hoehe: 280, label: `Blutdruck-Jahresmittel ${ziel[2]} je Messquelle` })
+      + `<div class="legende">${gruppen.map(g => `<span><i class="sp-q" style="background:${g.farbe}"></i>${esc(g.name)}</span>`).join('')}<span><i class="sp-q" style="background:var(--ok-soft);outline:1px solid var(--ok)"></i>Zielbereich ${ziel[2]}: unter ${ziel[0]}/${ziel[1]}</span><span><i style="background:none;border-top:2px dotted var(--fg)"></i>Durchschnitt aller gewählten Messungen${ss ? `: ${Math.round(ss)}/${Math.round(sd)} mmHg (${gewaehlt.length})` : ''}</span>${ohneDaten.length ? '<span><b>?</b> Messung bekannt, Werte fehlen</span>' : ''}</div>`
+      : '<p class="small muted">Für diese Auswahl gibt es keine Messwerte.</p>'}
+    <p class="small muted" style="margin:8px 0 0">Jede Säule reicht vom unteren (diastolischen) bis zum oberen (systolischen) Jahresmittel, Zahlen in mmHg. Die Langzeitmessung der Praxis ist medizinisch maßgeblich; Uhr- und Heimmessungen zeigen den Trend.${art === '24h' && an.has('heim') ? ' Heimmessungen sind Monatsmittel aus dem Blutdruck-Tagebuch.' : ''} Für Einzelwerte auf eine Säule tippen bzw. mit der Maus darauf zeigen.</p>
+    ${gDaten.length ? `<h3 style="margin:18px 0 4px">Gewicht je Jahr</h3>${spannenJahre({ jahre, gruppen: [{ id: 'gewicht', name: 'Gewicht', farbe: 'var(--muted)' }], daten: gDaten, hoehe: 170, schritt: 5, rand: 3, label: 'Gewicht je Jahr' })}
+      <p class="small muted" style="margin:4px 0 0">Gleiche Jahresachse wie oben. Säule = niedrigster bis höchster Wert im Jahr, Kreis = Jahresmittel in kg.</p>` : ''}
+  </section>`;
 }
 
 function spRuecken(a, sp) {

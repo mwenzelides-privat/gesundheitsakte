@@ -550,6 +550,10 @@ body.blatt-offen { overflow: hidden; }
 .legende span { display: inline-flex; gap: 6px; align-items: center; }
 .legende i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
 .legende svg { width: 13px; height: 13px; }
+.legende i.sp-q, .sp-quellen i.sp-q { width: 11px; height: 11px; border-radius: 3px; }
+.sp-quellen { margin: 0 0 8px; flex-wrap: wrap; }
+.sp-quellen button { display: inline-flex; align-items: center; gap: 6px; }
+.sp-quellen button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
 .sp-kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .sp-kachel { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--fg); text-decoration: none; }
 .sp-kachel:hover { border-color: var(--accent); }

@@ -235,7 +235,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc],[data-tk-lesen],[data-tk-neu],[data-tk-ignorieren],[data-tk-zeigen],[data-tk-zeitraum],[data-bdart],[data-sp-dokumente]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc],[data-tk-lesen],[data-tk-neu],[data-tk-ignorieren],[data-tk-zeigen],[data-tk-zeitraum],[data-bdart],[data-bdquelle],[data-sp-dokumente]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -265,6 +265,7 @@ document.addEventListener('click', async ev => {
     zeichnen(); return;
   }
   if (d.bdart) { V.spFilter.bd = d.bdart; return zeichnen(); }
+  if (d.bdquelle) { const q = V.spFilter.quellen; if (q.has(d.bdquelle)) { if (q.size > 1) q.delete(d.bdquelle); } else q.add(d.bdquelle); return zeichnen(); }
   if (d.spDokumente) { V.docFilter.sp = d.spDokumente; location.hash = '#dokumente'; return; }
   if (d.tkLesen) {
     const neu = () => { if (ansichtId() === 'tk' && !$('#ebene form')) zeichnen(); };

@@ -89,8 +89,10 @@ export function blutdruckMessungen(akte) {
   const sp = schwerpunkt('blutdruck');
   const liste = [];
   for (const d of akte.dokumente) {
-    if (!d.werte?.length || !gehoertZu(akte, sp, d, 'dokument')) continue;
+    if (!gehoertZu(akte, sp, d, 'dokument')) continue;
     const q = messquelle(d);
+    // Bekannte Langzeitmessung ohne Zahlen (z. B. nur im Tagebuch erwähnt, Bericht fehlt)
+    if (!d.werte?.length) { if (d.bdOhneWerte) liste.push({ datum: d.datum, art: '24h', quelle: q, h24: null, tag: null, nacht: null, ohneWerte: true, doc: d }); continue; }
     if (q === 'heim') {
       for (const [name, wert] of d.werte) {
         const p = paar(wert); const m = name.match(/mittel\s+(\d{2})(?:\s*[–-]\s*(\d{2}))?\/(\d{4})(?:.*?\((\d+)\s*Messung)?/i);
@@ -199,5 +201,54 @@ export function saeulenQuartale({ gruppen, daten, hoehe = 220, label = '' }) {
       const beschr = q.quartal.endsWith('-1') ? `<text x="${xs + breite / 2}" y="${H - 10}" text-anchor="middle" font-size="11" fill="var(--muted)">${q.quartal.slice(0, 4)}</text>` : '';
       return teile + beschr;
     }).join('')}
+  </svg>`;
+}
+
+/**
+ * Spannen je Jahr: eine Säule pro Gruppe vom unteren bis zum oberen Wert (z. B. diastolisch bis systolisch).
+ * daten: [{ jahr, gruppe, oben, unten, mitte?, titel, textOben?, textUnten?, textMitte? }]
+ * ohne: [{ jahr, gruppe, titel }] – bekannte Messung ohne Zahlen („?“)
+ * band: { von, bis, text } – Zielbereich; linien: [{ y, text }] – gestrichelt (z. B. Durchschnitt)
+ */
+export function spannenJahre({ jahre, gruppen, daten, ohne = [], band = null, linien = [], hoehe = 260, label = '', schritt: schrittF = null, rand = 10 }) {   // rand: Platz über der höchsten Säule für die Beschriftung
+  if (!jahre.length) return '';
+  const werte = [...daten.flatMap(d => [d.oben, d.unten]), ...linien.map(l => l.y), ...(band ? [band.von, band.bis] : [])];
+  if (!werte.length) return '';
+  const r = schrittF || 10;
+  const yMin = Math.floor((Math.min(...werte) - Math.min(6, rand)) / r) * r, yMax = Math.ceil((Math.max(...werte) + rand) / r) * r;
+  const W = breite(), H = hoehe, pl = 44, pr = linien.some(l => l.text) ? 46 : 14, pt = 16, pb = 28;   // rechts Platz für „Ø …“
+  const sw = (W - pl - pr) / jahre.length;
+  const y = v => pt + (yMax - v) / (yMax - yMin) * (H - pt - pb);
+  const schritt = schrittF || ((yMax - yMin) > 60 ? 20 : (yMax - yMin) > 24 ? 10 : 5);
+  const gitter = []; for (let v = Math.ceil(yMin / schritt) * schritt; v <= yMax; v += schritt) gitter.push(v);
+  const bw = Math.max(10, Math.min(22, (sw * 0.86) / Math.max(1, gruppen.length) - 4));
+  const teile = [];
+  jahre.forEach((j, i) => {
+    const hier = gruppen.filter(g => daten.some(d => d.jahr === j && d.gruppe === g.id) || ohne.some(o => o.jahr === j && o.gruppe === g.id));
+    hier.forEach((g, k) => {
+      const mx = pl + i * sw + sw / 2 + (k - (hier.length - 1) / 2) * (bw + 4);
+      const d = daten.find(x => x.jahr === j && x.gruppe === g.id);
+      if (d) {
+        const y1 = y(d.oben), y0 = y(d.unten), h = Math.max(4, y0 - y1);
+        teile.push(`<g class="dg-punkt"><rect x="${(mx - bw / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${g.farbe}"/>`
+          + (d.mitte != null ? `<circle cx="${mx.toFixed(1)}" cy="${y(d.mitte).toFixed(1)}" r="4" fill="var(--surface)" stroke="${g.farbe}" stroke-width="2"/>` : '')
+          + (d.textOben ? `<text x="${mx.toFixed(1)}" y="${(y1 - 5).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--fg)">${esc(d.textOben)}</text>` : '')
+          + (d.textUnten ? `<text x="${mx.toFixed(1)}" y="${(y1 + h + 13).toFixed(1)}" text-anchor="middle" font-size="11" fill="var(--muted)">${esc(d.textUnten)}</text>` : '')
+          + `<rect x="${(mx - bw / 2 - 3).toFixed(1)}" y="${(y1 - 16).toFixed(1)}" width="${(bw + 6).toFixed(1)}" height="${(h + 34).toFixed(1)}" fill="transparent"><title>${esc(d.titel || '')}</title></rect></g>`);
+      } else {
+        const o = ohne.find(x => x.jahr === j && x.gruppe === g.id), cy = band ? y((band.von + band.bis) / 2) : (pt + H - pb) / 2;
+        teile.push(`<g class="dg-punkt"><circle cx="${mx.toFixed(1)}" cy="${cy.toFixed(1)}" r="10" fill="var(--surface)" stroke="${g.farbe}" stroke-width="2" stroke-dasharray="3 3"/>`
+          + `<text x="${mx.toFixed(1)}" y="${(cy + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--fg)">?</text>`
+          + `<circle cx="${mx.toFixed(1)}" cy="${cy.toFixed(1)}" r="14" fill="transparent"><title>${esc(o.titel || '')}</title></circle></g>`);
+      }
+    });
+  });
+  return `<svg class="diagramm" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
+    ${band ? `<rect x="${pl}" y="${y(band.bis).toFixed(1)}" width="${W - pl - pr}" height="${(y(band.von) - y(band.bis)).toFixed(1)}" fill="var(--ok-soft)"/>` : ''}
+    ${gitter.map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v}</text>`).join('')}
+    ${band?.text ? `<text x="${W - pr - 4}" y="${(y(band.von) - 5).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ok)" paint-order="stroke" stroke="var(--ok-soft)" stroke-width="3">${esc(band.text)}</text>` : ''}
+    ${jahre.map((j, i) => `<text x="${(pl + i * sw + sw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${j}</text>`).join('')}
+    ${linien.map(l => `<line x1="${pl}" x2="${W - pr}" y1="${y(l.y).toFixed(1)}" y2="${y(l.y).toFixed(1)}" stroke="var(--fg)" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="2 4"/>${l.text ? `<text x="${W - pr + 4}" y="${(y(l.y) + 4).toFixed(1)}" font-size="11" font-weight="700" fill="var(--fg)">${esc(l.text)}</text>` : ''}`).join('')}
+    ${teile.join('')}
   </svg>`;
 }
