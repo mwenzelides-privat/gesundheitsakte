@@ -13,6 +13,16 @@ async function pdfBibliothek() {
   }
   return pdfjs;
 }
+/** true, wenn das PDF nur mit Kennwort zu öffnen ist (dann kann es auch Claude nicht lesen). */
+export async function pdfGeschuetzt(daten) {
+  const b = new Uint8Array(daten);
+  if (!new TextDecoder('latin1').decode(b).includes('/Encrypt')) return false;
+  try {
+    const lib = await pdfBibliothek();
+    await lib.getDocument({ data: b.slice(), isEvalSupported: false }).promise;   // Kopie: pdf.js darf den Puffer übernehmen
+    return false;
+  } catch (e) { return e?.name === 'PasswordException'; }
+}
 /** Text der ersten Seiten eines PDFs (leer bei reinen Scans). */
 export async function pdfText(daten, maxSeiten = 4) {
   try {

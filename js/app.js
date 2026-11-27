@@ -10,7 +10,7 @@ import { importLesen, importVorschau, importAnwenden } from './import.js';
 import { aendern, dateienVerknuepfen, inEingangHochladen, fachordnerPruefen, dateiInPapierkorb } from './speicher.js';
 import { vorschlaegeErstellen } from './erkennung.js';
 import { vorschlagUebernehmen } from './formulare.js';
-import { schluesselLaden, schluesselEntfernen, schluesselVergessen, eingangAuswerten, eingangAutomatisch, dokumentAuswerten, offeneDokumente, stapelAuswerten, stapelStoppen } from './auswertung.js';
+import { fehlgeschlageneDokumente, schluesselLaden, schluesselEntfernen, schluesselVergessen, eingangAuswerten, eingangAutomatisch, dokumentAuswerten, offeneDokumente, stapelAuswerten, stapelStoppen } from './auswertung.js';
 import { duplikatVon } from './speicher.js';
 import { tkAuslesen, tkAbgleich, tkUebernehmen, tkZeitraumAnpassen, tkIgnorieren } from './tk.js';
 import { erinnerungenAbgleichen, erinnerungenEntfernen } from './erinnerungen.js';
@@ -361,7 +361,7 @@ document.addEventListener('click', async ev => {
       if (!ids.length) return;
       const r = await stapelAuswerten(ids, () => { if (ansichtId() === 'einstellungen' && !$('#ebene form')) zeichnen(); });
       zeichnen();
-      toast(r.abbruch ? `Abgebrochen nach ${r.fertig} Dokumenten: ${r.abbruch}` : `${r.fertig === 1 ? 'Ein Dokument' : r.fertig + ' Dokumente'} ausgewertet${r.fehler ? `, ${r.fehler} nicht lesbar` : ''}.`, r.abbruch ? 'fehler' : '');
+      toast(r.abbruch ? `Abgebrochen nach ${r.fertig} Dokumenten: ${r.abbruch}` : `${r.fertig === 1 ? 'Ein Dokument' : r.fertig + ' Dokumente'} ausgewertet.${r.fehler ? ` ${r.fehler} nicht auswertbar – ${r.gruende[0]}${r.fehler > 1 ? ' (Gründe stehen in den Einstellungen)' : ''}` : ''}`, r.abbruch || r.fehler ? 'fehler' : '');
       return;
     }
     case 'ki-kosten': return blatt(V.blattKosten());

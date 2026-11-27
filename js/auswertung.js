@@ -10,6 +10,7 @@ import { Z, aendern } from './speicher.js';
 import { KI_MODELL, KI_SDK, KI_SCHLUESSEL_DATEI, KI_MAX_MB, KI_PREIS } from './konfig.js';
 import { DOKUMENT_TYPEN, finde } from './modell.js';
 import { heuteIso, neueId } from './hilfen.js';
+import { pdfGeschuetzt } from './erkennung.js';
 
 const TEST = new URLSearchParams(location.search).has('test');
 
@@ -183,7 +184,9 @@ export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: a
   if (art.fehler) throw new Error(art.fehler);
   if (Number(f.size || 0) > KI_MAX_MB * 1e6) throw new Error(`Die Datei ist größer als ${KI_MAX_MB} MB und kann nicht ausgewertet werden.`);
 
-  const daten = base64(await Z.drive.dateiInhalt(f.id));
+  const roh = await Z.drive.dateiInhalt(f.id);
+  if (art.art === 'pdf' && await pdfGeschuetzt(roh)) throw Object.assign(new Error('Die PDF-Datei ist mit einem Kennwort geschützt. Bitte mit dem Kennwort öffnen, ohne Schutz neu speichern (z. B. „Drucken → Als PDF speichern“) und in den Eingang legen.'), { name: 'Kennwort' });
+  const daten = base64(roh);
   const block = art.art === 'pdf'
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: daten } }
     : { type: 'image', source: { type: 'base64', media_type: art.mime, data: daten } };
@@ -341,10 +344,19 @@ export async function dokumentAuswerten(docId) {
   if (laufend.has(docId)) return null;
   laufend.add(docId);
   try {
-    const m = await Z.drive.metadaten(d.driveId);
-    const v = aufbereiten(Z.akte, await anfragen(m, { effort: stufeFuer(d.typ) }), d);
+    let v;
+    try {
+      const m = await Z.drive.metadaten(d.driveId);
+      v = aufbereiten(Z.akte, await anfragen(m, { effort: stufeFuer(d.typ) }), d);
+    } catch (e) {
+      // Grund merken: Das Dokument zählt dann nicht mehr als „offen“ und die Einstellungen zeigen, warum
+      if (e.name !== 'AnmeldungNoetig' && !/Schlüssel|Guthaben|Verbindung|Anfragen/.test(e.message))
+        aendern(a => { const x = finde(a, 'dokumente', docId); if (x) Object.assign(x, { kiFehler: e.message, kiFehlerZeit: new Date().toISOString() }); });
+      throw e;
+    }
     aendern(a => {
       const x = finde(a, 'dokumente', docId); if (!x) return;
+      delete x.kiFehler; delete x.kiFehlerZeit;
       // Eine selbst geschriebene Notiz (z. B. aus dem Gesundheitstagebuch) bleibt als Notiz erhalten
       if (x.kurz && !x.ki && !x.notiz) x.notiz = x.kurz;
       Object.assign(x, { kurz: v.kurz, werte: v.werte, diagnosen: v.diagnosen, naechste: v.naechste, ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit, kiKosten: v.kiKosten, kiStufe: v.kiStufe });
@@ -356,14 +368,16 @@ export async function dokumentAuswerten(docId) {
 }
 
 /** Dokumente mit Datei, die noch nicht ausgewertet sind. */
-export const offeneDokumente = akte => akte.dokumente.filter(d => d.driveId && !d.ki && dateiArt({ name: d.datei || '', mimeType: '' }).fehler === undefined);
+export const offeneDokumente = akte => akte.dokumente.filter(d => d.driveId && !d.ki && !d.kiFehler && dateiArt({ name: d.datei || '', mimeType: '' }).fehler === undefined);
+/** Dokumente, deren Auswertung gescheitert ist (mit Grund in kiFehler). */
+export const fehlgeschlageneDokumente = akte => akte.dokumente.filter(d => d.driveId && !d.ki && d.kiFehler);
 
 let stapel = null;
 export const stapelStand = () => stapel;
 /** Mehrere Dokumente nacheinander auswerten. Bricht bei Schlüssel-, Guthaben- oder Verbindungsfehlern ab. */
 export async function stapelAuswerten(ids, nachher = () => {}) {
   if (stapel) return stapel;
-  stapel = { gesamt: ids.length, fertig: 0, fehler: 0, abbruch: null, stopp: false };
+  stapel = { gesamt: ids.length, fertig: 0, fehler: 0, gruende: [], abbruch: null, stopp: false };
   nachher();
   try {
     for (const id of ids) {
@@ -371,6 +385,7 @@ export async function stapelAuswerten(ids, nachher = () => {}) {
       try { await dokumentAuswerten(id); stapel.fertig++; }
       catch (e) {
         stapel.fehler++;
+        stapel.gruende.push(`${finde(Z.akte, 'dokumente', id)?.titel || 'Dokument'}: ${e.message}`);
         if (/Schlüssel|Guthaben|Verbindung|verbinden|Anfragen/.test(e.message) || e.name === 'AnmeldungNoetig') { stapel.abbruch = e.message; break; }
       }
       nachher();

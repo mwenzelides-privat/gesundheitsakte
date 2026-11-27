@@ -5,7 +5,7 @@ import { VERSION, STAND } from './konfig.js';
 import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NAME, WT_LANG, heute, iso } from './hilfen.js';
 import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG, STATUS_ERKRANKUNG, offen, zeitenText } from './modell.js';
 import { personenVorschlaege } from './kalender.js';
-import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand } from './auswertung.js';
+import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand, fehlgeschlageneDokumente, STUFE_TEXT } from './auswertung.js';
 import { tkAbgleich, tkQuartale, tkWirdGelesen, qText } from './tk.js';
 import { erinnerungenAn, VORLAUF_STANDARD } from './erinnerungen.js';
 
@@ -159,26 +159,40 @@ const tausend = n => (n || 0).toLocaleString('de-DE');
 export function blattKosten() {
   const a = A();
   const v = a.einstellungen?.kiVerbrauch;
-  const monate = Object.entries(v?.monate || {}).sort((x, y) => y[0].localeCompare(x[0]));
+  const prot = [...(v?.protokoll || [])].reverse();
+  const summeProt = prot.reduce((n, p) => n + (p.usd || 0), 0);
+  // Auswertungen vor Version 0.7.2: Datum bekannt (kiStand), Uhrzeit und Einzelkosten nicht erfasst
+  const alt = a.dokumente.filter(d => d.ki && !d.kiZeit && !String(d.kiModell || '').includes('Claude Code')).sort((x, y) => (y.kiStand || '').localeCompare(x.kiStand || ''));
+  const restKosten = Math.max(0, kosten(v) - summeProt);
   const ausClaudeCode = a.dokumente.filter(d => String(d.kiModell || '').includes('Claude Code')).length;
-  const monatName = m => `${MON_LANG[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}`;
+  const titelZu = p => a.dokumente.find(d => d.kiZeit === p.zeit)?.titel;
+  const uhr = z => z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const tage = [];
+  for (const p of prot) {
+    const z = new Date(p.zeit), t = z.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (tage.at(-1)?.tag !== t) tage.push({ tag: t, eintraege: [], summe: 0 });
+    tage.at(-1).eintraege.push({ ...p, z }); tage.at(-1).summe += p.usd || 0;
+  }
+  const zeile = p => `<tr style="cursor:default"><td class="num">${uhr(p.z)} Uhr</td><td>${esc(titelZu(p) || p.datei)}${titelZu(p) && titelZu(p) !== p.datei ? `<div class="small muted">${esc(p.datei)}</div>` : ''}</td>
+    <td class="small">${p.art === 'TK' ? 'TK-Diagnosen' : 'Befund'}${p.stufe ? ' · ' + esc(STUFE_TEXT[p.stufe] || p.stufe) : ''}</td><td class="num small">${tausend(p.eingabe)} / ${tausend(p.ausgabe)}</td><td class="num"><b>${dollar(p.usd)}</b></td></tr>`;
   return `${blattKopf('Befund-Auswertung', 'Kosten für Claude')}
     <div class="kennzahlen" style="margin-bottom:14px"><div><b class="num">${dollar(kosten(v))}</b><span>geschätzt gesamt</span></div>
       <div><b class="num">${tausend(v?.anzahl)}</b><span>Auswertungen</span></div>
-      <div><b class="num">${v?.anzahl ? dollar(kosten(v) / v.anzahl) : '–'}</b><span>je Dokument</span></div></div>
-    <dl class="meta-grid">
+      <div><b class="num">${v?.anzahl ? dollar(kosten(v) / v.anzahl) : '–'}</b><span>je Auswertung</span></div></div>
+    <h3 style="margin:4px 0 6px">Alle Auswertungen mit Datum und Uhrzeit</h3>
+    ${tage.length ? `<section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Uhrzeit</th><th>Dokument</th><th>Art</th><th>Token ein / aus</th><th>Kosten</th></tr></thead><tbody>
+      ${tage.map(t => `<tr style="cursor:default"><td colspan="4" style="background:var(--surface-2)"><b>${t.tag}</b> · ${t.eintraege.length} ${t.eintraege.length === 1 ? 'Auswertung' : 'Auswertungen'}</td><td class="num" style="background:var(--surface-2)"><b>${dollar(t.summe)}</b></td></tr>${t.eintraege.map(zeile).join('')}`).join('')}
+    </tbody></table></div></section>` : '<p class="small muted" style="margin:0">Noch keine Auswertung mit Uhrzeit erfasst.</p>'}
+    ${alt.length ? `<h3 style="margin:16px 0 6px">Vor Version 0.7.2 (Uhrzeit und Einzelkosten nicht erfasst)</h3>
+      <section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Datum</th><th>Dokument</th><th>Kosten</th></tr></thead><tbody>
+      ${alt.map(d => `<tr style="cursor:default"><td class="num">${datum(d.kiStand)}</td><td>${esc(d.titel)}</td><td class="num muted">–</td></tr>`).join('')}
+      <tr style="cursor:default"><td colspan="2"><b>Zusammen</b></td><td class="num"><b>${dollar(restKosten)}</b></td></tr></tbody></table></div></section>` : ''}
+    <dl class="meta-grid" style="margin-top:14px">
       <dt>Seit</dt><dd>${v?.seit ? datum(v.seit) : '–'}</dd>
-      <dt>Eingabe</dt><dd>${tausend(v?.eingabe)} Token (4 $ je Million)</dd>
-      <dt>Ausgabe</dt><dd>${tausend(v?.ausgabe)} Token (20 $ je Million)</dd>
+      <dt>Token gesamt</dt><dd>${tausend(v?.eingabe)} Eingabe (4 $ je Million) · ${tausend(v?.ausgabe)} Ausgabe (20 $ je Million)</dd>
       <dt>Modell</dt><dd>Claude Opus 5.5</dd>
     </dl>
-    ${monate.length ? `<section class="panel" style="padding:12px;margin-top:14px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Monat</th><th>Auswertungen</th><th>Kosten</th></tr></thead><tbody>
-      ${monate.map(([m, x]) => `<tr style="cursor:default"><td>${monatName(m)}</td><td class="num">${x.anzahl}</td><td class="num">${dollar(kosten(x))}</td></tr>`).join('')}
-    </tbody></table></div></section>` : ''}
-    ${(v?.protokoll || []).length ? `<h3 style="margin:16px 0 6px">Letzte Auswertungen</h3><section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Zeitpunkt</th><th>Datei</th><th>Kosten</th></tr></thead><tbody>
-      ${[...v.protokoll].reverse().slice(0, 30).map(p => { const z = new Date(p.zeit); return `<tr style="cursor:default"><td class="num">${z.toLocaleDateString('de-DE')} ${z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</td><td>${esc(p.datei)}${p.art === 'TK' ? ' <span class="muted">(TK)</span>' : ''}</td><td class="num">${dollar(p.usd)}</td></tr>`; }).join('')}
-    </tbody></table></div></section>` : ''}
-    <p class="small muted" style="margin:14px 0 0">Die Beträge sind aus den verbrauchten Token geschätzt. Verbindlich ist die Abrechnung in der Anthropic Console (Billing/Usage), dort in US-Dollar.${ausClaudeCode ? ` ${ausClaudeCode} Dokumente wurden einmalig in Claude Code ausgewertet und sind hier nicht enthalten.` : ''}${monate.length ? '' : ' Die Aufteilung nach Monaten beginnt mit Version 0.6.1.'} Zeitpunkt und Kosten jeder einzelnen Auswertung werden seit Version 0.7.2 gespeichert.</p>
+    <p class="small muted" style="margin:14px 0 0">Die Beträge sind aus den verbrauchten Token geschätzt. Verbindlich ist die Abrechnung in der Anthropic Console (Billing/Usage), dort in US-Dollar. Fehlgeschlagene Versuche (z. B. kennwortgeschützte PDFs) kosten nichts und stehen nicht in der Liste.${ausClaudeCode ? ` ${ausClaudeCode} Dokumente wurden einmalig in Claude Code ausgewertet und sind hier nicht enthalten.` : ''}</p>
     <div class="knoepfe" style="margin-top:14px"><a class="btn" href="#einstellungen" data-zu>Einstellungen der Auswertung</a></div>`;
 }
 
@@ -764,6 +778,7 @@ function kiEinstellungen(a) {
   const v = e.kiVerbrauch;
   const offen = offeneDokumente(a).length;
   const st = stapelStand();
+  const fehl = fehlgeschlageneDokumente(a);
   const verbunden = Z.drive?.verbunden();
   const usd = n => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
   return `<section class="panel"><div class="panel-kopf"><h2>Befund-Auswertung (Claude)</h2></div>
@@ -783,7 +798,9 @@ function kiEinstellungen(a) {
       ${st ? `<p class="small" style="margin:0 0 8px"><span class="dreher"></span> ${st.fertig} von ${st.gesamt} ausgewertet${st.fehler ? `, ${st.fehler} Fehler` : ''} … <button class="link" data-aktion="ki-stopp">anhalten</button></p>`
         : offen ? `<p class="small" style="margin:0 0 8px">${offen === 1 ? 'Ein Dokument mit Datei ist' : offen + ' Dokumente mit Datei sind'} noch nicht ausgewertet. Kosten etwa 5–15 Cent je Dokument, zusammen also rund ${usd(offen * 0.1)}. Eigene Notizen bleiben als „Eigene Notiz“ erhalten.</p>
           <button class="btn" data-aktion="ki-stapel">${svg('ki')}${offen === 1 ? 'Jetzt auswerten' : `Alle ${offen} auswerten`}</button>`
-        : '<p class="small muted" style="margin:0">Alle Dokumente mit Datei sind ausgewertet.</p>'}` : ''}
+        : '<p class="small muted" style="margin:0">Alle Dokumente mit Datei sind ausgewertet.</p>'}
+      ${fehl.length ? `<h3 style="margin:14px 0 6px">Nicht auswertbar · ${fehl.length}</h3><div class="liste">${fehl.map(d => `<div class="zeile" style="align-items:center"><div class="grow" data-doc="${d.id}" style="cursor:pointer"><div class="t">${esc(d.titel)}</div>
+        <div class="s">${esc(d.kiFehler)}</div></div><button class="btn klein" data-ki-doc="${d.id}">Erneut versuchen</button></div>`).join('')}</div>` : ''}` : ''}
   </section>`;
 }
 
@@ -846,6 +863,7 @@ export function blattDokument(id) {
       <dt>Datei</dt><dd class="mono">${d.datei ? esc(d.datei) : d.driveId ? 'in Google Drive' : 'keine Datei hinterlegt'}</dd>
     </dl>
     ${d.kurz || d.ki ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? `Auswertung von Claude · ${kiStempel(d)}` : 'Inhalt / Notiz'}</span>${d.ki ? kiInhalt({ ...d, arztNeu: null, erkNeu: null }) : `<p>${esc(d.kurz)}</p>`}</section>` : ''}
+    ${!d.ki && d.kiFehler ? `<p class="hinweis-text warn">Auswertung nicht möglich: ${esc(d.kiFehler)}</p>` : ''}
     ${d.notiz ? `<section class="ki"><span class="label">${svg('stift', 'width="14" height="14"')}Eigene Notiz</span><p>${esc(d.notiz)}</p></section>` : ''}
     ${wirdAusgewertet(d.id) ? '<p class="small"><span class="dreher"></span> Claude liest das Dokument …</p>' : ''}
     ${d.werte?.length ? `<section class="panel" style="padding:12px"><div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Wert</th><th>Ergebnis</th><th>Referenz</th></tr></thead><tbody>
