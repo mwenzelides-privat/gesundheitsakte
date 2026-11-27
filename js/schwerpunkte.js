@@ -73,7 +73,8 @@ const zahl = s => { const m = String(s).replace(',', '.').match(/^-?\d+(\.\d+)?$
 export function messquelle(d) {
   if (d.messquelle) return d.messquelle;
   const t = norm(`${d.titel} ${d.kurz || ''}`);
-  if (/huawei|smartwatch|uhr\b/.test(t)) return 'uhr';
+  // Uhrzeiten („8:23 Uhr“) nicht als Huawei-Uhr werten
+  if (/huawei|smartwatch|\buhr\b/.test(t.replace(/\d{1,2}[:.]\d{2}\s*uhr/g, ' '))) return 'uhr';
   if (/tagebuch|heimmessung|selbstmessung/.test(t)) return 'heim';
   return 'praxis';
 }

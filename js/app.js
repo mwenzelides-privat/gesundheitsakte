@@ -2,7 +2,7 @@
 import { VERSION } from './konfig.js';
 import { $, esc, svg, uhrzeit, datum } from './hilfen.js';
 import { googleDrive } from './drive.js';
-import { Z, beobachten, ausCacheStarten, beispielStarten, zurBegruessung, anmelden, verbinden, privatBestaetigen, trennen, konfliktLoesen, aktualisieren, speichernJetzt, eingangLesen } from './speicher.js';
+import { Z, beobachten, ausCacheStarten, beispielStarten, zurBegruessung, anmelden, verbinden, privatBestaetigen, trennen, konfliktLoesen, aktualisieren, speichernJetzt, eingangLesen, eingangKiVergessen } from './speicher.js';
 import * as V from './ansichten.js';
 import { formular, absenden, loeschFrage, loeschSperre, loeschen } from './formulare.js';
 import { vorsorgeLage } from './modell.js';
@@ -287,7 +287,7 @@ document.addEventListener('click', async ev => {
   }
   if (d.duplikatWeg) {
     el.disabled = true;
-    try { await dateiInPapierkorb(d.duplikatWeg); Z.eingang = (Z.eingang || []).filter(f => f.id !== d.duplikatWeg); Z.unerfasst = (Z.unerfasst || []).filter(f => f.id !== d.duplikatWeg); zeichnen(); toast('Doppelte Datei liegt im Drive-Papierkorb (30 Tage wiederherstellbar).'); }
+    try { const md5 = [...(Z.eingang || []), ...(Z.unerfasst || [])].find(f => f.id === d.duplikatWeg)?.md5Checksum; await dateiInPapierkorb(d.duplikatWeg); eingangKiVergessen(d.duplikatWeg, md5); Z.eingang = (Z.eingang || []).filter(f => f.id !== d.duplikatWeg); Z.unerfasst = (Z.unerfasst || []).filter(f => f.id !== d.duplikatWeg); zeichnen(); toast('Doppelte Datei liegt im Drive-Papierkorb (30 Tage wiederherstellbar).'); }
     catch (e) { el.disabled = false; toast(e.message, 'fehler'); }
     return;
   }

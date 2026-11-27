@@ -299,6 +299,9 @@ export async function eingangAuswerten(f, nachher = () => {}) {
     const vorher = Z.vorschlaege[f.id] || {};
     const v = aufbereiten(Z.akte, await anfragen(f, { effort: stufeFuer(vorher.typ) }), vorher);
     Z.vorschlaege[f.id] = { ...vorher, ...v, quelle: vorher.quelle || 'Sonstiges', schluessel: vorher.schluessel, kiFehler: null };
+    // In der Akte merken: Die (bezahlte) Auswertung übersteht Neuladen und Gerätewechsel, bis die Datei abgelegt ist.
+    const { schluessel, textGefunden, ...merken } = Z.vorschlaege[f.id];
+    aendern(a => { (a.eingangKi ||= {})[f.id] = { ...merken, datei: f.name, md5: f.md5Checksum || null }; });
     return Z.vorschlaege[f.id];
   } catch (e) {
     if (Z.vorschlaege[f.id]) Z.vorschlaege[f.id].kiFehler = e.message;
@@ -318,12 +321,13 @@ export async function eingangAutomatisch(istDuplikat, nachher = () => {}, melden
   if (!(await schluesselLaden())) return;
   automatikLaeuft = true;
   const erledigt = new Set();
+  let geaendert = false;
   try {
     for (;;) {
       nochmal = false;
       for (const f of Z.eingang || []) {   // nicht auswertbare Dateien: Grund auf der Karte zeigen
         const v = Z.vorschlaege[f.id], art = dateiArt(f);
-        if (v && !v.ki && !v.kiFehler && art.fehler) v.kiFehler = art.fehler;
+        if (v && !v.ki && !v.kiFehler && art.fehler) { v.kiFehler = art.fehler; geaendert = true; }
       }
       const f = (Z.eingang || []).find(x => { const v = Z.vorschlaege[x.id]; return v && !v.ki && !v.kiFehler && !erledigt.has(x.id) && !istDuplikat(x); });
       if (!f) { if (nochmal) continue; break; }
@@ -332,7 +336,12 @@ export async function eingangAutomatisch(istDuplikat, nachher = () => {}, melden
       try { const v = await eingangAuswerten(f, nachher); if (v) melden(`„${v.titel}“ ausgewertet – bitte unter Dokumente prüfen und übernehmen.`); }
       catch (e) { melden(`„${f.name}“ konnte nicht ausgewertet werden: ${e.message}`, 'fehler'); if (/Schlüssel|Guthaben|Verbindung|Anfragen/.test(e.message)) break; }
     }
-  } finally { automatikLaeuft = false; nachher(); }
+  } finally {
+    automatikLaeuft = false;
+    // Nur neu zeichnen, wenn sich etwas getan hat – sonst entsteht eine Endlosschleife
+    // (Zeichnen der Dokumente-Seite stößt die Automatik an), die Knöpfe unter dem Finger austauscht.
+    if (geaendert || erledigt.size) nachher();
+  }
 }
 
 // ---------------------------------------------------------------- Abgelegte Dokumente

@@ -187,7 +187,12 @@ async function durchlauf(dateien, nachJederDatei) {
         try { text = (await pdfText(await Z.drive.dateiInhalt(f.id))).text; }
         catch (e) { if (e?.name === 'AnmeldungNoetig') throw e; }
       }
+      const alt = Z.vorschlaege[f.id];
       Z.vorschlaege[f.id] = { schluessel, textGefunden: !!text, ...dokumentErkennen(Z.akte, { name: f.name, text, geaendert: f.modifiedTime }) };
+      // Vorhandene Claude-Auswertung nicht verwerfen (aus diesem Lauf oder in der Akte gemerkt)
+      const gemerkt = Z.akte.eingangKi || {};
+      const ki = alt?.ki ? alt : gemerkt[f.id] || Object.values(gemerkt).find(k => k.md5 && k.md5 === f.md5Checksum);
+      if (ki?.ki && (!ki.md5 || !f.md5Checksum || ki.md5 === f.md5Checksum)) Object.assign(Z.vorschlaege[f.id], ki, { schluessel, kiFehler: null });
       nachJederDatei();
     }
   }

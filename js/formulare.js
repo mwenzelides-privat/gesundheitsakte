@@ -355,7 +355,7 @@ export async function vorschlagUebernehmen(dateiId) {
 }
 /** Felder einer Claude-Auswertung, die mit dem Dokument gespeichert werden. */
 function kiFelder(v) {
-  return { werte: v.werte || [], diagnosen: v.diagnosen || [], naechste: v.naechste || [], ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit || null, kiKosten: v.kiKosten ?? null, kiStufe: v.kiStufe || null };
+  return { werte: v.werte || [], diagnosen: v.diagnosen || [], naechste: v.naechste || [], ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit || null, kiKosten: v.kiKosten ?? null, kiStufe: v.kiStufe || null, ...(v.messquelle ? { messquelle: v.messquelle } : {}) };
 }
 
 // ======================================================================

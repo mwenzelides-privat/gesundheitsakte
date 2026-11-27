@@ -280,8 +280,15 @@ export async function ausEingangAblegen(driveId, d) {
   const r = await Z.drive.verschieben(driveId, ablageName(d, endungVon(f.name)), ordner, (f.parents || [])[0] || Z.ids.eingang);
   Z.eingang = (Z.eingang || []).filter(x => x.id !== driveId);
   Z.unerfasst = (Z.unerfasst || []).filter(x => x.id !== driveId);
+  eingangKiVergessen(driveId, f.md5Checksum);
   if (f.md5Checksum) Z.pruefsummen = { ...(Z.pruefsummen || {}), [f.md5Checksum]: r.id };
   return { driveId: r.id, datei: r.name, link: r.webViewLink || Z.drive.link(r.id) };
+}
+
+/** Gemerkte Claude-Auswertung einer Eingangsdatei entfernen (abgelegt oder gelöscht). */
+export function eingangKiVergessen(driveId, md5 = null) {
+  const weg = Object.entries(Z.akte?.eingangKi || {}).filter(([k, v]) => k === driveId || (md5 && v.md5 === md5)).map(([k]) => k);
+  if (weg.length) aendern(a => { weg.forEach(k => delete a.eingangKi[k]); });
 }
 
 /** Mehrere Dateien (Ziehen und Ablegen, Mehrfachauswahl, Teilen vom Handy) in den Eingang laden. */
@@ -313,6 +320,9 @@ export async function fachordnerPruefen() {
 }
 /** Liegt dieselbe Datei (gleiche Prüfsumme) schon abgelegt? Liefert das Dokument oder null. */
 export function duplikatVon(datei) {
+  // Inhaltlich gleich (z. B. Papierkopie eines schon abgelegten Berichts), von der Auswertung festgestellt
+  const doppelt = Z.vorschlaege?.[datei?.id]?.doppeltVon;
+  if (doppelt) { const d = Z.akte.dokumente.find(x => x.id === doppelt); if (d) return d; }
   const id = datei?.md5Checksum && Z.pruefsummen?.[datei.md5Checksum];
   if (!id || id === datei.id) return null;
   return Z.akte.dokumente.find(d => d.driveId === id) || { titel: 'eine bereits abgelegte Datei', driveId: id };
