@@ -101,6 +101,10 @@ button, input, select { font: inherit; color: inherit; }
 /* ---------- Bausteine ---------- */
 .kopf { display: flex; gap: 16px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
 .kopf p { margin: 4px 0 0; color: var(--muted); }
+.kopf-rechts { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.ansicht-wahl { display: flex; flex-direction: column; gap: 4px; font-size: .75rem; font-weight: 700; color: var(--muted); }
+.ansicht-wahl select { min-width: 230px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 8px 10px; font-weight: 400; color: var(--fg); font-size: 1rem; }
+@media (max-width: 640px) { .kopf-rechts, .ansicht-wahl, .ansicht-wahl select { width: 100%; } }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; min-width: 0; }
 .panel-kopf { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .panel-kopf a { font-size: .88rem; font-weight: 700; text-decoration: none; }

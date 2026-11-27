@@ -131,13 +131,13 @@ function zaehler(id) {
   return { dokumente: ein, vorsorge: ueber, mehr: ein + ueber }[id] || 0;
 }
 function navZeichnen(aktiv) {
-  const basis = aktiv.startsWith('fach-') ? 'faecher' : aktiv;
+  const basis = aktiv.startsWith('fach-') ? 'faecher' : aktiv.startsWith('sp-') ? 'verlauf' : aktiv;   // Schwerpunkte gehören zum Krankheitsverlauf
   const sichtbar = !!Z.akte;
   $('#nav-seite').innerHTML = sichtbar ? V.navListe().map(([id, txt, icon]) => {
     const z = zaehler(id);
     return `<a href="#${id}" class="${basis === id ? 'aktiv' : ''}">${svg(icon || id)}${txt}${z ? `<span class="badge">${z}</span>` : ''}</a>`;
   }).join('') : '';
-  const tabAktiv = V.MEHR_ZIELE.includes(basis) || basis.startsWith('sp-') ? 'mehr' : basis;
+  const tabAktiv = V.MEHR_ZIELE.includes(basis) ? 'mehr' : basis;
   $('#nav-tabs').innerHTML = sichtbar ? TABS.map(([id, txt]) => {
     const z = zaehler(id);
     return `<a href="#${id}" class="${tabAktiv === id ? 'aktiv' : ''}">${svg(id)}${txt}${z ? `<span class="badge">${z}</span>` : ''}</a>`;
@@ -407,6 +407,7 @@ document.addEventListener('submit', async ev => {
 });
 
 document.addEventListener('input', ev => {
+  if (ev.target.hasAttribute?.('data-ansicht-wahl')) { location.hash = '#' + ev.target.value; return; }
   const map = { 'f-suche': 'suche', 'f-kat': 'kat', 'f-typ': 'typ', 'f-jahr': 'jahr', 'f-sp': 'sp' };
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
   if (ev.target.id === 'hochladen-datei' && ev.target.files?.length) { const f = [...ev.target.files]; ev.target.value = ''; hochladen(f); return; }

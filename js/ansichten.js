@@ -227,7 +227,7 @@ export function docZeile(d) {
 export const verlaufFilter = { kat: 'alle', nurAktiv: false };
 export function ansichtVerlauf() {
   const a = A();
-  const kopf = `<div class="kopf"><div><h1>Krankheitsverlauf</h1><p>${a.erkrankungen.length} Erkrankungen und Behandlungen${a.erkrankungen.length ? ', neueste zuerst' : ''}.</p></div>${neuKnopf('erkrankung', 'Erkrankung erfassen')}</div>`;
+  const kopf = `<div class="kopf"><div><h1>Krankheitsverlauf</h1><p>${a.erkrankungen.length} Erkrankungen und Behandlungen${a.erkrankungen.length ? ', neueste zuerst' : ''}.</p></div><div class="kopf-rechts">${ansichtWahl('verlauf')}${neuKnopf('erkrankung', 'Erkrankung erfassen')}</div></div>`;
   if (!a.erkrankungen.length) return `${BEISPIEL()}${kopf}<section class="panel">${leer('Noch keine Erkrankungen erfasst. Trage zuerst ein, was dir einfällt: Operationen, längere Behandlungen, dauerhafte Diagnosen. Später ergänzen die TK-Behandlungsübersichten die Liste.', 'erkrankung', 'Erste Erkrankung erfassen')}</section>`;
   const kats = [...new Set(a.erkrankungen.map(e => e.kat).filter(Boolean))];
   const liste = a.erkrankungen.filter(e => (verlaufFilter.kat === 'alle' || e.kat === verlaufFilter.kat) && (!verlaufFilter.nurAktiv || e.status !== 'abgeschlossen'))
@@ -841,14 +841,18 @@ export const NAV = [
   ['start', 'Übersicht'], ['verlauf', 'Krankheitsverlauf'], ['faecher', 'Fachbereiche'], ['termine', 'Termine'],
   ['dokumente', 'Dokumente'], ['vorsorge', 'Vorsorge'], ['aerzte', 'Ärzte'], ['tk', 'TK und Import'], ['einstellungen', 'Einstellungen'],
 ];
-/** Navigation am PC: Schwerpunkte direkt nach dem Krankheitsverlauf. */
-export const navListe = () => [NAV[0], NAV[1], ...SCHWERPUNKTE.map(s => [`sp-${s.id}`, s.name, s.icon]), ...NAV.slice(2)];
+/** Navigation am PC. Die Schwerpunkte stehen nicht in der Leiste, sondern in der Auswahl „Ansicht“ im Krankheitsverlauf. */
+export const navListe = () => NAV;
+/** Auswahlliste „Ansicht“: gesamter Krankheitsverlauf oder ein Schwerpunkt. */
+export function ansichtWahl(aktuell) {
+  const opt = [['verlauf', 'Gesamter Krankheitsverlauf'], ...SCHWERPUNKTE.map(s => [`sp-${s.id}`, `Schwerpunkt ${s.name}`])];
+  return `<label class="ansicht-wahl"><span>Ansicht</span><select data-ansicht-wahl aria-label="Ansicht wählen">${opt.map(([id, t]) => `<option value="${id}" ${id === aktuell ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`;
+}
 export function ansichtMehr() {
   const a = A();
   const ueber = a.vorsorge.filter(v => vorsorgeLage(a, v).status === 'ueber').length;
   const z = { dokumente: `${a.dokumente.length} Dokumente${Z.eingang?.length ? ` · ${Z.eingang.length} im Eingang` : ''}`, vorsorge: ueber ? `${ueber} überfällig` : 'alles im Blick', aerzte: `${a.aerzte.length} Praxen`, tk: 'Import und Verbindungen', einstellungen: 'Profil, Fachbereiche, Speicherort' };
   return `${BEISPIEL()}<div class="kopf"><div><h1>Mehr</h1></div></div>
-  <section class="panel"><div class="panel-kopf"><h2>Meine Schwerpunkte</h2></div><div class="liste">${SCHWERPUNKTE.map(s => `<a class="zeile" href="#sp-${s.id}" style="align-items:center"><span class="hinweis-icon" style="color:var(--accent)">${svg(s.icon)}</span><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">${s.id === 'blutdruck' ? 'Messungen, Verlauf, Gewicht, Befunde' : 'Befunde, Behandlungen, Termine'}</div></div></a>`).join('')}</div></section>
   <section class="panel"><div class="liste">${MEHR_ZIELE.map(id => `<a class="zeile" href="#${id}" style="align-items:center"><span class="hinweis-icon" style="color:var(--accent)">${svg(id)}</span><div class="grow"><div class="t">${NAV.find(n => n[0] === id)[1]}</div><div class="s">${z[id]}</div></div></a>`).join('')}</div></section>`;
 }
 
@@ -998,7 +1002,7 @@ function spBlutdruck(a, sp) {
   const ueber = m => m.h24 && (m.h24.sys >= 130 || m.h24.dia >= 80);
   const startGew = gew.filter(p => p.datum >= '2025-01-01')[0] || gew[0], jetztGew = gew.at(-1);
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>${svg('sp-blutdruck')} Blutdruck</h1><p>${g.erks.length ? g.erks.map(e => esc(e.titel)).join(', ') + ` · seit ${datum(g.erks.at(-1).von)}` : 'Alle Messungen, Befunde und Termine rund um den Blutdruck'}${g.med.length ? ' · ' + g.med.map(m => esc(m.name + (m.dosis ? ' ' + m.dosis : ''))).join(', ') : ''}</p></div></div>
+  <div class="kopf"><div><h1>${svg('sp-blutdruck')} Blutdruck</h1><p>${g.erks.length ? g.erks.map(e => esc(e.titel)).join(', ') + ` · seit ${datum(g.erks.at(-1).von)}` : 'Alle Messungen, Befunde und Termine rund um den Blutdruck'}${g.med.length ? ' · ' + g.med.map(m => esc(m.name + (m.dosis ? ' ' + m.dosis : ''))).join(', ') : ''}</p></div>${ansichtWahl('sp-blutdruck')}</div>
   <div class="kennzahlen sp-zahlen">
     <div><b class="num">${praxis.length ? bdText(praxis.at(-1).h24) : '–'}</b><span>Praxis, 24 h · ${praxis.length ? datum(praxis.at(-1).datum) : 'keine'}</span></div>
     <div><b class="num">${uhr.length ? bdText(uhr.at(-1).h24) : '–'}</b><span>Uhr, 24 h · ${uhr.length ? datum(uhr.at(-1).datum) : 'keine'}</span></div>
@@ -1075,7 +1079,7 @@ function spRuecken(a, sp) {
   }
   const befunde = g.docs.filter(d => ['Bildgebung', 'Befund', 'Arztbrief'].includes(d.typ));
   return `${BEISPIEL()}
-  <div class="kopf"><div><h1>${svg('sp-ruecken')} Rücken</h1><p>Befunde, Behandlungen und Termine rund um Wirbelsäule und Bandscheiben</p></div></div>
+  <div class="kopf"><div><h1>${svg('sp-ruecken')} Rücken</h1><p>Befunde, Behandlungen und Termine rund um Wirbelsäule und Bandscheiben</p></div>${ansichtWahl('sp-ruecken')}</div>
   ${g.erks.length ? `<section class="panel"><div class="panel-kopf"><h2>Erkrankungen</h2><a href="#verlauf">Gesamter Verlauf</a></div><div class="liste">${g.erks.map(erkZeile).join('')}</div></section>` : ''}
   ${daten.length ? `<section class="panel"><div class="panel-kopf"><h2>Behandlungen je Quartal</h2><span class="small muted">${vorbei.length} Termine</span></div>
     ${saeulenQuartale({ gruppen, daten, label: 'Rücken-Behandlungen je Quartal' })}
