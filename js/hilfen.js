@@ -60,6 +60,8 @@ const I = {
   eingang: '<path d="M4 13h4l1.5 3h5L16 13h4"/><path d="M4 13 6.5 5h11L20 13v6H4z"/>',
   karte: '<path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
   zu: '<path d="M6 6l12 12M18 6 6 18"/>',
+  'sp-blutdruck': '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/><path d="M6 12h3l1.5-2.5 2 5 1.5-2.5h4"/>',
+  'sp-ruecken': '<rect x="9" y="3" width="6" height="3.2" rx="1"/><rect x="8.5" y="7.6" width="7" height="3.2" rx="1"/><rect x="8.5" y="12.2" width="7" height="3.2" rx="1"/><rect x="9" y="16.8" width="6" height="3.2" rx="1"/>',
   ki: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"/><circle cx="12" cy="12" r="3"/>',
   links: '<path d="m14 6-6 6 6 6"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',

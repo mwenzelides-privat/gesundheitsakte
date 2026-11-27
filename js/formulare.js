@@ -5,6 +5,7 @@ import { finde, kat, faecher, STATUS_ERKRANKUNG, DOKUMENT_TYPEN, zeitenLesen, ze
 import { blattKopf, formularProfil } from './ansichten.js';
 import { kandidatZuordnen, kalenderAbgleichen, personenFestlegen } from './kalender.js';
 import { schluesselSpeichern, neueEintraegeAnlegen } from './auswertung.js';
+import { SCHWERPUNKTE, gehoertZu, zuordnungSetzen } from './schwerpunkte.js';
 
 const A = () => Z.akte;
 const QUELLEN = ['Scan', 'TK-ePA', 'E-Mail', 'Papier', 'Arztportal', 'Sonstiges'];
@@ -144,6 +145,7 @@ export function formular(typ, id, vorgaben = {}) {
         ${feld({ name: 'erk', label: 'Gehört zu Erkrankung', typ: 'select', wert: d.erk, optionen: erkOptionen() })}
         ${vorschlag?.arztNeu ? feld({ name: 'arztNeu', label: `Neue Praxis anlegen: ${vorschlag.arztNeu.name}`, typ: 'checkbox', wert: true, hilfe: 'Gilt nur, wenn oben kein Arzt gewählt ist.' }) : ''}
         ${vorschlag?.erkNeu ? feld({ name: 'erkNeu', label: `Neue Erkrankung anlegen: ${vorschlag.erkNeu.titel}${vorschlag.erkNeu.icd ? ' (' + vorschlag.erkNeu.icd + ')' : ''}`, typ: 'checkbox', wert: true, hilfe: 'Gilt nur, wenn oben keine Erkrankung gewählt ist.' }) : ''}
+        <fieldset><legend>Schwerpunkt</legend><div class="checks">${SCHWERPUNKTE.map(sp => `<label class="check"><input type="checkbox" name="sp" value="${sp.id}" ${gehoertZu(a, sp, d, 'dokument') ? 'checked' : ''}> ${esc(sp.name)}</label>`).join('')}</div></fieldset>
         ${feld({ name: 'kurz', label: d.ki ? 'Zusammenfassung (Claude)' : 'Inhalt / Notiz', typ: 'textarea', wert: d.kurz, attr: 'placeholder="Wichtigste Aussage, Diagnose, Werte …"', hilfe: d.ki ? 'Diagnosen und Messwerte aus der Auswertung werden mit gespeichert.' : 'Mit „Mit Claude auswerten“ wird dieser Text vorgeschlagen.' })}`,
         { loeschbar: !!id, knopf: eingangsDatei ? 'Einordnen' : 'Speichern', extra: eingangsDatei ? `data-eingang="${esc(eingangsDatei.id)}"` : '' });
     }
@@ -300,7 +302,10 @@ export async function absenden(form) {
         if (neu.arzt) daten.arzt = neu.arzt;
         if (neu.erk) daten.erk = neu.erk;
       }
-      if (id) Object.assign(finde(x, 'dokumente', id), daten, ablage); else x.dokumente.push({ id: neueId('d'), ...daten, ...ablage });
+      let doc;
+      if (id) doc = Object.assign(finde(x, 'dokumente', id), daten, ablage); else x.dokumente.push(doc = { id: neueId('d'), ...daten, ...ablage });
+      const gewaehlt = fd.getAll('sp');
+      for (const sp of SCHWERPUNKTE) zuordnungSetzen(x, doc, 'dokument', sp.id, gewaehlt.includes(sp.id));
     });
     if (eingangId) delete Z.vorschlaege[eingangId];
     return eingangId ? 'Eingeordnet und in Drive abgelegt.' : ablage.driveId ? 'Dokument in Drive abgelegt.' : 'Dokument gespeichert.';

@@ -4,9 +4,10 @@ import { googleDrive } from './drive.js';
 import { VERSION, STAND } from './konfig.js';
 import { esc, datum, tag, tageBis, relativ, svg, MON, MON_LANG, WT, WOCHE, WT_NAME, WT_LANG, heute, iso } from './hilfen.js';
 import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG, STATUS_ERKRANKUNG, offen, zeitenText } from './modell.js';
-import { personenVorschlaege } from './kalender.js';
+import { personenVorschlaege, norm } from './kalender.js';
 import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand, fehlgeschlageneDokumente, STUFE_TEXT } from './auswertung.js';
 import { tkAbgleich, tkQuartale, tkWirdGelesen, qText } from './tk.js';
+import { SCHWERPUNKTE, schwerpunkt, gehoertZu, schwerpunkteVon, erkrankungenVon, blutdruckMessungen, gewichtVerlauf, messquelle, QUELLE_TEXT, liniendiagramm, saeulenQuartale } from './schwerpunkte.js';
 import { erinnerungenAn, VORLAUF_STANDARD } from './erinnerungen.js';
 
 const A = () => Z.akte;
@@ -131,6 +132,7 @@ export function ansichtStart() {
   <div class="kopf"><div><h1>Guten Tag${Z.modus === 'konto' && rufname(a.profil) ? ', ' + esc(rufname(a.profil)) : ''}</h1><p>${wtag}${a.profil.jahrgang ? ` · Jahrgang ${a.profil.jahrgang}` : ''}${a.profil.kasse ? ' · ' + esc(a.profil.kasse) : ''}</p></div>${kostenKnopf}</div>
   ${ersteSchritte}
   ${hinweise ? `<section class="hinweise" aria-label="Braucht Aufmerksamkeit">${hinweise}</section>` : ''}
+  ${spKacheln(a)}
   <div class="grid2">
     <div class="stack">
       <section class="panel"><div class="panel-kopf"><h2>Nächste Arzttermine</h2><a href="#termine">Alle Termine</a></div>
@@ -463,7 +465,7 @@ function kandidatenPanel() {
 // ======================================================================
 //  Dokumente
 // ======================================================================
-export const docFilter = { suche: '', kat: '', typ: '', jahr: '' };
+export const docFilter = { suche: '', kat: '', typ: '', jahr: '', sp: '' };
 export function ansichtDokumente() {
   const a = A();
   const typen = [...new Set(a.dokumente.map(d => d.typ))].sort();
@@ -497,6 +499,7 @@ export function ansichtDokumente() {
       <div class="feld"><label for="f-suche">Suche</label><input id="f-suche" type="search" placeholder="Titel, Arzt, Inhalt …" value="${esc(docFilter.suche)}"></div>
       <div class="feld"><label for="f-kat">Fachbereich</label><select id="f-kat"><option value="">Alle</option>${kats.map(k => `<option value="${k.id}" ${docFilter.kat === k.id ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select></div>
       <div class="feld"><label for="f-typ">Art</label><select id="f-typ"><option value="">Alle</option>${typen.map(t => `<option ${docFilter.typ === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+      <div class="feld"><label for="f-sp">Schwerpunkt</label><select id="f-sp"><option value="">Alle</option>${SCHWERPUNKTE.map(s => `<option value="${s.id}" ${docFilter.sp === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
       <div class="feld"><label for="f-jahr">Jahr</label><select id="f-jahr"><option value="">Alle</option>${jahre.map(j => `<option ${docFilter.jahr === j ? 'selected' : ''}>${j}</option>`).join('')}</select></div>
     </div><div id="doc-liste"></div>` : leer('Noch keine Dokumente abgelegt.', 'dokument', 'Erstes Dokument ablegen')}
   </section>`;
@@ -553,11 +556,12 @@ export function docListeZeichnen() {
   const ziel = document.getElementById('doc-liste'); if (!ziel) return;
   const a = A();
   const q = docFilter.suche.trim().toLowerCase();
-  const liste = a.dokumente.filter(d => (!docFilter.kat || d.kat === docFilter.kat) && (!docFilter.typ || d.typ === docFilter.typ) && (!docFilter.jahr || d.datum.startsWith(docFilter.jahr))
+  const spF = docFilter.sp ? schwerpunkt(docFilter.sp) : null;
+  const liste = a.dokumente.filter(d => (!spF || gehoertZu(a, spF, d, 'dokument')) && (!docFilter.kat || d.kat === docFilter.kat) && (!docFilter.typ || d.typ === docFilter.typ) && (!docFilter.jahr || d.datum.startsWith(docFilter.jahr))
     && (!q || [d.titel, d.kurz, d.typ, arzt(d.arzt)?.name, kat(a, d.kat).name].join(' ').toLowerCase().includes(q))).sort(nachDatum).reverse();
   document.getElementById('doc-anzahl').textContent = `${liste.length} von ${a.dokumente.length}`;
   ziel.innerHTML = `<div class="tabelle-wrap"><table><thead><tr><th>Datum</th><th>Dokument</th><th>Art</th><th>Fach</th><th>Arzt</th><th>Datei</th></tr></thead><tbody>
-    ${liste.map(d => `<tr data-doc="${d.id}" tabindex="0"><td class="num">${datum(d.datum)}</td><td><b>${esc(d.titel)}</b></td><td>${esc(d.typ)}</td><td>${chip(d.kat)}</td><td>${esc(arzt(d.arzt)?.name || '–')}</td><td class="small muted">${d.driveId ? 'in Drive' : (d.quelle ? esc(d.quelle) : '–')}</td></tr>`).join('')}
+    ${liste.map(d => `<tr data-doc="${d.id}" tabindex="0"><td class="num">${datum(d.datum)}</td><td><b>${esc(d.titel)}</b>${spMarken(a, d, 'dokument')}</td><td>${esc(d.typ)}</td><td>${chip(d.kat)}</td><td>${esc(arzt(d.arzt)?.name || '–')}</td><td class="small muted">${d.driveId ? 'in Drive' : (d.quelle ? esc(d.quelle) : '–')}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="doc-karten liste">${liste.map(docZeile).join('')}</div>
     ${liste.length ? '' : '<p class="muted">Keine Dokumente gefunden. Filter zurücksetzen oder anderen Suchbegriff versuchen.</p>'}`;
@@ -837,11 +841,14 @@ export const NAV = [
   ['start', 'Übersicht'], ['verlauf', 'Krankheitsverlauf'], ['faecher', 'Fachbereiche'], ['termine', 'Termine'],
   ['dokumente', 'Dokumente'], ['vorsorge', 'Vorsorge'], ['aerzte', 'Ärzte'], ['tk', 'TK und Import'], ['einstellungen', 'Einstellungen'],
 ];
+/** Navigation am PC: Schwerpunkte direkt nach dem Krankheitsverlauf. */
+export const navListe = () => [NAV[0], NAV[1], ...SCHWERPUNKTE.map(s => [`sp-${s.id}`, s.name, s.icon]), ...NAV.slice(2)];
 export function ansichtMehr() {
   const a = A();
   const ueber = a.vorsorge.filter(v => vorsorgeLage(a, v).status === 'ueber').length;
   const z = { dokumente: `${a.dokumente.length} Dokumente${Z.eingang?.length ? ` · ${Z.eingang.length} im Eingang` : ''}`, vorsorge: ueber ? `${ueber} überfällig` : 'alles im Blick', aerzte: `${a.aerzte.length} Praxen`, tk: 'Import und Verbindungen', einstellungen: 'Profil, Fachbereiche, Speicherort' };
   return `${BEISPIEL()}<div class="kopf"><div><h1>Mehr</h1></div></div>
+  <section class="panel"><div class="panel-kopf"><h2>Meine Schwerpunkte</h2></div><div class="liste">${SCHWERPUNKTE.map(s => `<a class="zeile" href="#sp-${s.id}" style="align-items:center"><span class="hinweis-icon" style="color:var(--accent)">${svg(s.icon)}</span><div class="grow"><div class="t">${esc(s.name)}</div><div class="s">${s.id === 'blutdruck' ? 'Messungen, Verlauf, Gewicht, Befunde' : 'Befunde, Behandlungen, Termine'}</div></div></a>`).join('')}</div></section>
   <section class="panel"><div class="liste">${MEHR_ZIELE.map(id => `<a class="zeile" href="#${id}" style="align-items:center"><span class="hinweis-icon" style="color:var(--accent)">${svg(id)}</span><div class="grow"><div class="t">${NAV.find(n => n[0] === id)[1]}</div><div class="s">${z[id]}</div></div></a>`).join('')}</div></section>`;
 }
 
@@ -860,6 +867,7 @@ export function blattDokument(id) {
       <dt>Arzt</dt><dd>${ar ? esc(ar.name) : '–'}</dd>
       <dt>Erkrankung</dt><dd>${e ? esc(e.titel) + (e.icd ? ' <span class="mono">' + esc(e.icd) + '</span>' : '') : '–'}</dd>
       ${d.quelle ? `<dt>Quelle</dt><dd>${esc(d.quelle)}</dd>` : ''}
+      ${schwerpunkteVon(A(), d, 'dokument').length ? `<dt>Schwerpunkt</dt><dd>${schwerpunkteVon(A(), d, 'dokument').map(s => `<a href="#sp-${s.id}" data-zu>${esc(s.name)}</a>`).join(', ')}</dd>` : ''}
       <dt>Datei</dt><dd class="mono">${d.datei ? esc(d.datei) : d.driveId ? 'in Google Drive' : 'keine Datei hinterlegt'}</dd>
     </dl>
     ${d.kurz || d.ki ? `<section class="ki"><span class="label">${svg('ki', 'width="14" height="14"')}${d.ki ? `Auswertung von Claude · ${kiStempel(d)}` : 'Inhalt / Notiz'}</span>${d.ki ? kiInhalt({ ...d, arztNeu: null, erkNeu: null }) : `<p>${esc(d.kurz)}</p>`}</section>` : ''}
@@ -896,4 +904,156 @@ export function blattTermin(id) {
     <div class="knoepfe"><button class="btn primaer" data-bearbeiten="termin:${t.id}">${svg('stift')}${t.quelle === 'kalender' ? 'Arzt oder Fach ändern' : 'Bearbeiten'}</button>
       ${t.link && !t.link.startsWith('#') ? `<a class="btn" href="${esc(t.link)}" target="_blank" rel="noopener">${svg('kalender')}Im Kalender öffnen</a>` : ''}
       ${t.quelle === 'kalender' ? `<button class="btn gefahr" data-termin-ignorieren="${t.id}">Kein Arzttermin</button>` : ''}</div>`;
+}
+
+// ======================================================================
+//  Schwerpunkte (Blutdruck, Rücken)
+// ======================================================================
+export const spFilter = { bd: '24h' };
+const SP_FARBE = { sys: 'hsl(24 var(--cat-s) var(--cat-l))', dia: 'hsl(212 var(--cat-s) var(--cat-l))', gewicht: 'var(--accent)' };
+const SP_FORM = { praxis: 'voll', uhr: 'hohl', heim: 'quadrat' };
+const zahlText = n => String(Math.round(n * 10) / 10).replace('.', ',');
+const bdText = p => p ? `${zahlText(p.sys)}/${zahlText(p.dia)}` : '–';
+function spMarken(a, x, typ) {
+  const l = schwerpunkteVon(a, x, typ);
+  return l.length ? ` ${l.map(s => `<span class="sp-marke">${esc(s.name)}</span>`).join(' ')}` : '';
+}
+function formLegende(quellen) {
+  const z = { praxis: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="var(--fg)"/></svg>', uhr: '<svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="var(--fg)" stroke-width="2"/></svg>', heim: '<svg viewBox="0 0 14 14"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" fill="var(--fg)"/></svg>' };
+  return quellen.map(q => `<span>${z[q]}${esc(QUELLE_TEXT[q])}</span>`).join('');
+}
+
+/** „Gewicht 99,5 kg · −10,8 kg seit 17.11.2025“ – Veränderung seit Beginn der aktuellen Messreihe (ab 2025). */
+function gewText(gew) {
+  if (gew.length < 2) return '';
+  const jetzt = gew.at(-1), start = gew.filter(p => p.datum >= '2025-01-01')[0] || gew[0];
+  const diff = jetzt.wert - start.wert;
+  return `<div class="s">Gewicht ${zahlText(jetzt.wert)} kg${start !== jetzt ? ` · ${diff > 0 ? '+' : '−'}${zahlText(Math.abs(diff))} kg seit ${datum(start.datum)}` : ''}</div>`;
+}
+/** Kacheln in der Übersicht. */
+function spKacheln(a) {
+  const mess = blutdruckMessungen(a).filter(m => m.art === '24h');
+  const praxis = mess.filter(m => m.quelle === 'praxis').at(-1), letzte = mess.at(-1);
+  const gew = gewichtVerlauf(a);
+  const rSp = schwerpunkt('ruecken');
+  const rErk = erkrankungenVon(a, rSp).filter(e => e.status !== 'abgeschlossen');
+  const rTermine = a.termine.filter(t => gehoertZu(a, rSp, t, 'termin'));
+  const jahr = rTermine.filter(t => tageBis(t.datum) <= 0 && tageBis(t.datum) > -365).length;
+  const naechster = rTermine.filter(t => tageBis(t.datum) >= 0).sort(nachDatum)[0];
+  return `<section class="sp-kacheln" aria-label="Meine Schwerpunkte">
+    <a class="sp-kachel" href="#sp-blutdruck"><div class="sp-kopf">${svg('sp-blutdruck')}<b>Blutdruck</b></div>
+      ${letzte ? `<div class="sp-zahl num">${bdText(letzte.h24 || letzte.tag)} <span>mmHg</span></div><div class="s">letzte 24-h-Messung, ${datum(letzte.datum)} · ${esc(QUELLE_TEXT[letzte.quelle])}</div>` : '<div class="s">Noch keine 24-h-Messung ausgewertet</div>'}
+      ${praxis && praxis !== letzte ? `<div class="s">Praxis zuletzt: ${bdText(praxis.h24)} mmHg (${datum(praxis.datum)})</div>` : ''}
+      ${gewText(gew)}</a>
+    <a class="sp-kachel" href="#sp-ruecken"><div class="sp-kopf">${svg('sp-ruecken')}<b>Rücken</b></div>
+      ${rErk.length ? `<div class="sp-zahl small" style="font-size:1rem">${esc(rErk[0].titel)}</div><div class="s">seit ${datum(rErk[0].von)}${rErk.length > 1 ? ` · +${rErk.length - 1} weitere` : ''}</div>` : '<div class="s">Keine laufende Rücken-Erkrankung</div>'}
+      <div class="s">${jahr} Behandlungen in den letzten 12 Monaten${naechster ? ` · nächster Termin ${datum(naechster.datum)}` : ''}</div></a>
+  </section>`;
+}
+
+export function ansichtSchwerpunkt(id) {
+  const sp = schwerpunkt(id);
+  if (!sp) return ansichtStart();
+  return id === 'blutdruck' ? spBlutdruck(A(), sp) : spRuecken(A(), sp);
+}
+
+function spGemeinsam(a, sp) {
+  const docs = a.dokumente.filter(d => gehoertZu(a, sp, d, 'dokument')).sort(nachDatum).reverse();
+  const termine = a.termine.filter(t => gehoertZu(a, sp, t, 'termin')).sort(nachDatum);
+  const kommend = termine.filter(t => tageBis(t.datum) >= 0), vorbei = termine.filter(t => tageBis(t.datum) < 0).reverse();
+  const erks = erkrankungenVon(a, sp).sort((x, y) => y.von.localeCompare(x.von));
+  const med = (a.medikamente || []).filter(m => gehoertZu(a, sp, m, 'medikament'));
+  const empfehlungen = docs.filter(d => d.naechste?.length).slice(0, 2);
+  return { docs, kommend, vorbei, erks, med, empfehlungen };
+}
+const erkZeile = e => `<button class="zeile" data-erk="${e.id}">${mark(e.kat)}<div class="grow"><div class="t">${esc(e.titel)}</div>
+  <div class="s">${datum(e.von)}${e.bis ? ' bis ' + datum(e.bis) : ' bis heute'}${e.icd ? ` · <span class="mono">${esc(e.icd)}</span>` : ''}</div></div><span class="pill st-${e.status}">${STATUS_ERKRANKUNG[e.status]}</span></button>`;
+function spListen(g, sp) {
+  return `<div class="grid2">
+    <div class="stack">
+      ${g.empfehlungen.length ? `<section class="panel"><div class="panel-kopf"><h2>Aktuelle Empfehlungen</h2></div>${g.empfehlungen.map(d => `<div style="margin-bottom:10px"><div class="small muted">${datum(d.datum)} · <button class="link" data-doc="${d.id}">${esc(d.titel)}</button></div><ul style="margin:4px 0 0 18px;padding:0">${d.naechste.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>`).join('')}</section>` : ''}
+      <section class="panel"><div class="panel-kopf"><h2>Termine</h2><a href="#termine">Alle Termine</a></div>
+        ${g.kommend.length ? `<h3 style="margin:0 0 6px">Kommend</h3><div class="liste">${g.kommend.slice(0, 4).map(terminZeile).join('')}</div>` : '<p class="small muted" style="margin:0 0 8px">Kein kommender Termin.</p>'}
+        ${g.vorbei.length ? `<h3 style="margin:10px 0 6px">Zuletzt · ${g.vorbei.length} insgesamt</h3><div class="liste">${g.vorbei.slice(0, 5).map(terminZeile).join('')}</div>` : ''}</section>
+    </div>
+    <div class="stack">
+      <section class="panel"><div class="panel-kopf"><h2>Dokumente · ${g.docs.length}</h2><button class="link" data-sp-dokumente="${sp.id}">Alle im Verzeichnis</button></div>
+        ${g.docs.length ? `<div class="liste">${g.docs.slice(0, 12).map(docZeile).join('')}</div>${g.docs.length > 12 ? `<p class="small muted" style="margin:8px 0 0">… und ${g.docs.length - 12} weitere</p>` : ''}` : '<p class="small muted" style="margin:0">Noch keine Dokumente zu diesem Thema.</p>'}
+        <p class="small muted" style="margin:10px 0 0">Zugeordnet über Erkrankung, Fachbereich und Stichwörter. Im Dokument unter „Bearbeiten → Schwerpunkt“ lässt sich das ändern.</p></section>
+    </div>
+  </div>`;
+}
+
+function spBlutdruck(a, sp) {
+  const g = spGemeinsam(a, sp);
+  const alle = blutdruckMessungen(a);
+  const art = spFilter.bd;
+  const wert = m => art === '24h' ? m.h24 : art === 'tag' ? m.tag : m.nacht;
+  const mess = alle.filter(m => wert(m) && (art === '24h' || m.art === '24h'));
+  const ziel = { '24h': [130, 80, '24 h'], tag: [135, 85, 'tagsüber'], nacht: [120, 70, 'nachts'] }[art];
+  const gew = gewichtVerlauf(a);
+  const von = [mess[0]?.datum, gew[0]?.datum].filter(Boolean).sort()[0];
+  const reihe = (k, name) => ({ name, farbe: SP_FARBE[k], punkte: mess.map(m => ({ datum: m.datum, y: wert(m)[k], form: SP_FORM[m.quelle],
+    titel: `${datum(m.datum)} · ${QUELLE_TEXT[m.quelle]} · ${ziel[2]}: ${bdText(wert(m))} mmHg${m.n ? ` (${m.n} Messungen)` : ''}` })), beschriftung: l => `${zahlText(l.y)}` });
+  const quellen = [...new Set(mess.map(m => m.quelle))];
+  const vierundzwanzig = alle.filter(m => m.art === '24h');
+  const praxis = vierundzwanzig.filter(m => m.quelle === 'praxis');
+  const uhr = vierundzwanzig.filter(m => m.quelle === 'uhr');
+  const ueber = m => m.h24 && (m.h24.sys >= 130 || m.h24.dia >= 80);
+  const startGew = gew.filter(p => p.datum >= '2025-01-01')[0] || gew[0], jetztGew = gew.at(-1);
+  return `${BEISPIEL()}
+  <div class="kopf"><div><h1>${svg('sp-blutdruck')} Blutdruck</h1><p>${g.erks.length ? g.erks.map(e => esc(e.titel)).join(', ') + ` · seit ${datum(g.erks.at(-1).von)}` : 'Alle Messungen, Befunde und Termine rund um den Blutdruck'}${g.med.length ? ' · ' + g.med.map(m => esc(m.name + (m.dosis ? ' ' + m.dosis : ''))).join(', ') : ''}</p></div></div>
+  <div class="kennzahlen sp-zahlen">
+    <div><b class="num">${praxis.length ? bdText(praxis.at(-1).h24) : '–'}</b><span>Praxis, 24 h · ${praxis.length ? datum(praxis.at(-1).datum) : 'keine'}</span></div>
+    <div><b class="num">${uhr.length ? bdText(uhr.at(-1).h24) : '–'}</b><span>Uhr, 24 h · ${uhr.length ? datum(uhr.at(-1).datum) : 'keine'}</span></div>
+    <div><b class="num">${vierundzwanzig.filter(ueber).length} / ${vierundzwanzig.length}</b><span>24-h-Messungen über 130/80</span></div>
+    ${jetztGew ? `<div><b class="num">${zahlText(jetztGew.wert)} kg</b><span>${startGew && startGew !== jetztGew ? `${jetztGew.wert - startGew.wert > 0 ? '+' : ''}${zahlText(jetztGew.wert - startGew.wert)} kg seit ${datum(startGew.datum)}` : 'Gewicht'}</span></div>` : ''}
+  </div>
+  <section class="panel"><div class="panel-kopf"><h2>Verlauf der Langzeitmessungen</h2>
+    <div class="filter" role="group" aria-label="Zeitraum der Mittelwerte">${[['24h', '24 Stunden'], ['tag', 'Tag'], ['nacht', 'Nacht']].map(([k, t]) => `<button type="button" data-bdart="${k}" aria-pressed="${art === k}">${t}</button>`).join('')}</div></div>
+    ${mess.length ? liniendiagramm({ reihen: [reihe('sys', 'systolisch'), reihe('dia', 'diastolisch')], ziele: [{ y: ziel[0], text: `Ziel ${ziel[2]} < ${ziel[0]}` }, { y: ziel[1], text: `< ${ziel[1]}` }], von, einheit: 'mmHg', label: `Blutdruck-Mittelwerte ${ziel[2]}` })
+      + `<div class="legende"><span><i style="background:${SP_FARBE.sys}"></i>systolisch (oberer Wert)</span><span><i style="background:${SP_FARBE.dia}"></i>diastolisch (unterer Wert)</span>${formLegende(quellen)}</div>`
+      : '<p class="small muted">Noch keine Messwerte für diese Auswahl.</p>'}
+    <p class="small muted" style="margin:8px 0 0">Mittelwerte je Messung in mmHg, gestrichelt die üblichen Zielwerte. Die Messung mit dem Langzeitgerät der Praxis ist medizinisch maßgeblich; Uhr- und Heimmessungen zeigen den Trend.${art === '24h' && quellen.includes('heim') ? ' Heimmessungen sind Monatsmittel aus dem Blutdruck-Tagebuch.' : ''}</p>
+  </section>
+  ${gew.length > 1 ? `<section class="panel"><div class="panel-kopf"><h2>Gewicht</h2><span class="small muted">gleiche Zeitachse wie oben</span></div>
+    ${liniendiagramm({ reihen: [{ name: 'Gewicht', farbe: SP_FARBE.gewicht, punkte: gew.map(p => ({ datum: p.datum, y: p.wert, form: 'voll', titel: `${datum(p.datum)}: ${zahlText(p.wert)} kg` })), beschriftung: l => `${zahlText(l.y)} kg` }], von, einheit: 'kg', hoehe: 200, label: 'Gewichtsverlauf' })}
+  </section>` : ''}
+  <section class="panel"><div class="panel-kopf"><h2>Alle Messungen</h2><span class="small muted">${alle.length} Einträge</span></div>
+    <div class="tabelle-wrap" style="display:block"><table><thead><tr><th>Datum</th><th>Quelle</th><th>24 h</th><th>Tag</th><th>Nacht</th><th>Puls</th><th>Nachtabsenkung</th></tr></thead><tbody>
+    ${[...alle].reverse().map(m => `<tr data-doc="${m.doc.id}" tabindex="0"><td class="num">${m.art === 'heim' ? datum(m.datum).slice(3) : datum(m.datum)}</td><td>${esc(QUELLE_TEXT[m.quelle])}</td>
+      <td class="num ${ueber(m) ? 'wert-hoch' : ''}">${bdText(m.h24)}</td><td class="num">${bdText(m.tag)}</td><td class="num">${bdText(m.nacht)}</td><td class="num">${m.puls ? zahlText(m.puls) : '–'}</td>
+      <td class="num">${m.dipping != null ? zahlText(m.dipping) + ' %' + (m.dipping < 10 ? ' <span class="muted small">(zu gering)</span>' : '') : '–'}</td></tr>`).join('')}
+    </tbody></table></div></section>
+  ${g.erks.length ? `<section class="panel"><div class="panel-kopf"><h2>Erkrankungen</h2></div><div class="liste">${g.erks.map(erkZeile).join('')}</div></section>` : ''}
+  ${spListen(g, sp)}`;
+}
+
+function spRuecken(a, sp) {
+  const g = spGemeinsam(a, sp);
+  const art = t => { const ar = t.arzt ? a.aerzte.find(x => x.id === t.arzt) : null; const s = norm(`${t.titel} ${ar?.fach || ''} ${ar?.name || ''}`);
+    return /physio|krankengym/.test(s) ? 'Physiotherapie' : /osteopath/.test(s) ? 'Osteopathie' : 'Arzt (Orthopädie, Neurochirurgie, Radiologie)'; };
+  const gruppen = [{ name: 'Arzt (Orthopädie, Neurochirurgie, Radiologie)', farbe: 'hsl(212 var(--cat-s) var(--cat-l))' }, { name: 'Physiotherapie', farbe: 'hsl(24 var(--cat-s) var(--cat-l))' }, { name: 'Osteopathie', farbe: 'hsl(300 var(--cat-s) var(--cat-l))' }];
+  const vorbei = [...g.vorbei].reverse();
+  const daten = [];
+  if (vorbei.length) {
+    const q = iso => `${iso.slice(0, 4)}-${Math.floor((+iso.slice(5, 7) - 1) / 3) + 1}`;
+    let [j, n] = q(vorbei[0].datum).split('-').map(Number); const [je, ne] = q(heute().toISOString().slice(0, 10)).split('-').map(Number);
+    if (n !== 1) n = 1;   // ab Jahresbeginn, damit die Jahreszahlen stimmen
+    while (j < je || (j === je && n <= ne)) { daten.push({ quartal: `${j}-${n}`, werte: {} }); if (++n > 4) { n = 1; j++; } }
+    for (const t of vorbei) { const z = daten.find(d => d.quartal === q(t.datum)); if (z) z.werte[art(t)] = (z.werte[art(t)] || 0) + 1; }
+  }
+  const befunde = g.docs.filter(d => ['Bildgebung', 'Befund', 'Arztbrief'].includes(d.typ));
+  return `${BEISPIEL()}
+  <div class="kopf"><div><h1>${svg('sp-ruecken')} Rücken</h1><p>Befunde, Behandlungen und Termine rund um Wirbelsäule und Bandscheiben</p></div></div>
+  ${g.erks.length ? `<section class="panel"><div class="panel-kopf"><h2>Erkrankungen</h2><a href="#verlauf">Gesamter Verlauf</a></div><div class="liste">${g.erks.map(erkZeile).join('')}</div></section>` : ''}
+  ${daten.length ? `<section class="panel"><div class="panel-kopf"><h2>Behandlungen je Quartal</h2><span class="small muted">${vorbei.length} Termine</span></div>
+    ${saeulenQuartale({ gruppen, daten, label: 'Rücken-Behandlungen je Quartal' })}
+    <div class="legende">${gruppen.map(x => `<span><i style="background:${x.farbe}"></i>${esc(x.name)}</span>`).join('')}</div>
+    <p class="small muted" style="margin:8px 0 0">Gezählt werden vergangene Termine aus dem Kalender und dem Gesundheitstagebuch, die zum Rücken gehören.</p></section>` : ''}
+  ${befunde.length ? `<section class="panel"><div class="panel-kopf"><h2>Befunde und Arztbriefe · ${befunde.length}</h2></div>
+    <div class="liste">${befunde.slice(0, 8).map(d => `<button class="zeile" data-doc="${d.id}">${mark(d.kat)}<div class="grow"><div class="t">${esc(d.titel)}</div>
+      <div class="s">${datum(d.datum)}${d.arzt && arzt(d.arzt) ? ' · ' + esc(arzt(d.arzt).name) : ''}</div>
+      ${(d.diagnosen || []).length ? `<div class="s">${d.diagnosen.slice(0, 4).map(x => esc(x.text) + (x.icd ? ` <span class="mono">${esc(x.icd)}</span>` : '')).join(' · ')}</div>` : d.kurz ? `<div class="s">${esc(d.kurz.split(/(?<=\.)\s/)[0])}</div>` : ''}</div></button>`).join('')}</div></section>` : ''}
+  ${spListen(g, sp)}`;
 }

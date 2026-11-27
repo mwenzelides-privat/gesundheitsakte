@@ -121,7 +121,7 @@ const TABS = [['start', 'Übersicht'], ['verlauf', 'Verlauf'], ['faecher', 'Fäc
 // ---------- Zeichnen ----------
 function ansichtId() {
   const h = (location.hash || '#start').slice(1);
-  if (h.startsWith('fach-')) return h;
+  if (h.startsWith('fach-') || h.startsWith('sp-')) return h;
   return ['start', 'verlauf', 'faecher', 'termine', 'dokumente', 'vorsorge', 'aerzte', 'tk', 'einstellungen', 'mehr'].includes(h) ? h : 'start';
 }
 function zaehler(id) {
@@ -133,11 +133,11 @@ function zaehler(id) {
 function navZeichnen(aktiv) {
   const basis = aktiv.startsWith('fach-') ? 'faecher' : aktiv;
   const sichtbar = !!Z.akte;
-  $('#nav-seite').innerHTML = sichtbar ? V.NAV.map(([id, txt]) => {
+  $('#nav-seite').innerHTML = sichtbar ? V.navListe().map(([id, txt, icon]) => {
     const z = zaehler(id);
-    return `<a href="#${id}" class="${basis === id ? 'aktiv' : ''}">${svg(id)}${txt}${z ? `<span class="badge">${z}</span>` : ''}</a>`;
+    return `<a href="#${id}" class="${basis === id ? 'aktiv' : ''}">${svg(icon || id)}${txt}${z ? `<span class="badge">${z}</span>` : ''}</a>`;
   }).join('') : '';
-  const tabAktiv = V.MEHR_ZIELE.includes(basis) ? 'mehr' : basis;
+  const tabAktiv = V.MEHR_ZIELE.includes(basis) || basis.startsWith('sp-') ? 'mehr' : basis;
   $('#nav-tabs').innerHTML = sichtbar ? TABS.map(([id, txt]) => {
     const z = zaehler(id);
     return `<a href="#${id}" class="${tabAktiv === id ? 'aktiv' : ''}">${svg(id)}${txt}${z ? `<span class="badge">${z}</span>` : ''}</a>`;
@@ -171,6 +171,7 @@ export function zeichnen() {
   if (Z.modus === 'leer') inhalt.innerHTML = V.ansichtBegruessung();
   else if (!Z.akte) inhalt.innerHTML = Z.status === 'verbinde' ? '<div class="laden">Verbinde mit Google Drive …</div>' : V.ansichtEinrichtung();
   else if (id.startsWith('fach-')) inhalt.innerHTML = V.ansichtFach(id.slice(5));
+  else if (id.startsWith('sp-')) inhalt.innerHTML = V.ansichtSchwerpunkt(id.slice(3));
   else inhalt.innerHTML = ({ start: V.ansichtStart, verlauf: V.ansichtVerlauf, faecher: V.ansichtFaecher, termine: V.ansichtTermine, dokumente: V.ansichtDokumente, vorsorge: V.ansichtVorsorge, aerzte: V.ansichtAerzte, tk: V.ansichtTK, einstellungen: V.ansichtEinstellungen, mehr: V.ansichtMehr })[id]();
   if (id === 'dokumente') { V.docListeZeichnen(); setTimeout(erkennungAnstossen, 50); }
   const lanes = $('.lanes-wrap'); if (lanes) lanes.scrollLeft = lanes.scrollWidth;
@@ -234,7 +235,7 @@ function konfliktZeigen() {
 
 // ---------- Klicks ----------
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc],[data-tk-lesen],[data-tk-neu],[data-tk-ignorieren],[data-tk-zeigen],[data-tk-zeitraum]');
+  const el = ev.target.closest('[data-doc],[data-arzt],[data-erk],[data-termin],[data-vorsorge],[data-neu],[data-bearbeiten],[data-loeschen],[data-erledigt],[data-einordnen],[data-aktion],[data-copy],[data-vfilter],[data-vaktiv],[data-tmodus],[data-zu],[data-schleier],[data-loeschen-ja],[data-loeschen-nein],[data-kandidat],[data-kandidat-ignorieren],[data-termin-ignorieren],[data-regel-loeschen],[data-person-entfernen],[data-vorschlag-ok],[data-duplikat-weg],[data-ki-eingang],[data-ki-doc],[data-tk-lesen],[data-tk-neu],[data-tk-ignorieren],[data-tk-zeigen],[data-tk-zeitraum],[data-bdart],[data-sp-dokumente]');
   if (!el) return;
   if (el.hasAttribute('data-schleier') && ev.target !== el) return;
   const d = el.dataset;
@@ -263,6 +264,8 @@ document.addEventListener('click', async ev => {
     catch (e) { toast(e.message, 'fehler'); if (e.name === 'KeinSchluessel') location.hash = '#einstellungen'; }
     zeichnen(); return;
   }
+  if (d.bdart) { V.spFilter.bd = d.bdart; return zeichnen(); }
+  if (d.spDokumente) { V.docFilter.sp = d.spDokumente; location.hash = '#dokumente'; return; }
   if (d.tkLesen) {
     const neu = () => { if (ansichtId() === 'tk' && !$('#ebene form')) zeichnen(); };
     try { const r = await tkAuslesen(d.tkLesen, neu); if (r) toast(`${r.eintraege} Arztkontakte mit ${r.diagnosen} Diagnosen ausgelesen.`); }
@@ -403,7 +406,7 @@ document.addEventListener('submit', async ev => {
 });
 
 document.addEventListener('input', ev => {
-  const map = { 'f-suche': 'suche', 'f-kat': 'kat', 'f-typ': 'typ', 'f-jahr': 'jahr' };
+  const map = { 'f-suche': 'suche', 'f-kat': 'kat', 'f-typ': 'typ', 'f-jahr': 'jahr', 'f-sp': 'sp' };
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
   if (ev.target.id === 'hochladen-datei' && ev.target.files?.length) { const f = [...ev.target.files]; ev.target.value = ''; hochladen(f); return; }
   if (ev.target.id === 'import-datei' && ev.target.files?.[0]) { importDateiGewaehlt(ev.target.files[0]); ev.target.value = ''; return; }

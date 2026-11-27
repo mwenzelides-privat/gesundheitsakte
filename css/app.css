@@ -542,3 +542,23 @@ body.blatt-offen { overflow: hidden; }
 /* Versionsnummer immer sichtbar (Seitenleiste am PC, Kopfzeile am Handy) */
 .versionsnr { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .versionsnr.oben { font-size: .72rem; color: var(--muted); font-weight: 600; margin-left: -4px; }
+
+/* Schwerpunkte und Diagramme */
+.diagramm { width: 100%; height: auto; display: block; overflow: visible; }
+.diagramm .dg-punkt:hover > :first-child { stroke-width: 3; }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84rem; color: var(--muted); margin-top: 8px; align-items: center; }
+.legende span { display: inline-flex; gap: 6px; align-items: center; }
+.legende i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.legende svg { width: 13px; height: 13px; }
+.sp-kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.sp-kachel { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); color: var(--fg); text-decoration: none; }
+.sp-kachel:hover { border-color: var(--accent); }
+.sp-kachel .sp-kopf { display: flex; gap: 8px; align-items: center; color: var(--accent); }
+.sp-kachel .sp-kopf svg { width: 20px; height: 20px; }
+.sp-kachel .sp-kopf b { color: var(--fg); font-family: var(--font-head); font-size: 1.05rem; }
+.sp-kachel .sp-zahl { font-family: var(--font-head); font-size: 1.6rem; font-weight: 700; line-height: 1.15; }
+.sp-kachel .sp-zahl span { font-size: .85rem; color: var(--muted); font-weight: 400; }
+.sp-kachel .s { font-size: .84rem; color: var(--muted); }
+.sp-zahlen { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
+.sp-marke { display: inline-block; font-size: .7rem; font-weight: 700; padding: 1px 6px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; margin-left: 4px; }
+h1 svg { width: 26px; height: 26px; vertical-align: -3px; color: var(--accent); }
