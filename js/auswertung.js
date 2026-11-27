@@ -168,8 +168,15 @@ Werte bitte das beigefügte Dokument aus.`;
 }
 
 /** Eine Datei aus Drive von Claude auswerten lassen. Liefert das geprüfte Ergebnis. */
+// Denkstufe: Arztbriefe, Befunde, Labor, Bildgebung u. Ä. mit der höchsten Stufe („max“),
+// Verwaltungsunterlagen (Rechnung, Formular, Rezept …) mit der normalen Stufe („high“).
+const VERWALTUNG = ['Rechnung', 'Formular', 'Kostenplan', 'Nachweis', 'Information', 'TK-Abrechnung', 'Rezept', 'Verordnung', 'Arbeitsunfähigkeit'];
+export const stufeFuer = typ => VERWALTUNG.includes(typ) ? 'high' : 'max';
+export const STUFE_TEXT = { max: 'höchste Denkstufe', high: 'normale Denkstufe' };
+
 /** Datei an Claude schicken. Standard: Befund-Auswertung; andere Auswertungen (z. B. TK) geben system, schema und text mit. */
-export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: auftrag = null, maxTokens = 16000, art: auftragsArt = 'Befund' } = {}) {
+export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: auftrag = null, maxTokens = null, art: auftragsArt = 'Befund', effort = 'high' } = {}) {
+  maxTokens ||= effort === 'max' || effort === 'xhigh' ? 64000 : 16000;
   if (!schluessel) await schluesselLaden();
   if (!schluessel) throw Object.assign(new Error('Für die Auswertung fehlt der Claude-API-Schlüssel (Einstellungen → Befund-Auswertung).'), { name: 'KeinSchluessel' });
   const art = dateiArt(f);
@@ -186,7 +193,7 @@ export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: a
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     thinking: { type: 'adaptive' },
-    output_config: { effort: 'high', format: { type: 'json_schema', schema: sch || schema(Z.akte) } },
+    output_config: { effort, format: { type: 'json_schema', schema: sch || schema(Z.akte) } },
     system,
     messages: [{ role: 'user', content: [block, { type: 'text', text: auftrag || kontext(Z.akte, f) }] }],
   };
@@ -201,25 +208,25 @@ export async function anfragen(f, { system = SYSTEM, schema: sch = null, text: a
     }
   } catch (e) { throw new Error(fehlerText(e, A)); }
 
-  const beleg = verbrauchMerken(antwort.usage, { datei: f.name, art: auftragsArt, modell: antwort.model });
+  const beleg = verbrauchMerken(antwort.usage, { datei: f.name, art: auftragsArt, modell: antwort.model, stufe: effort });
   if (antwort.stop_reason === 'refusal') throw new Error('Claude hat die Auswertung dieses Dokuments abgelehnt. Bitte selbst einordnen.');
   if (antwort.stop_reason === 'max_tokens') throw new Error('Das Dokument ist zu umfangreich für eine Auswertung am Stück.');
   const text = antwort.content.find(b => b.type === 'text')?.text;
   let r;
   try { r = JSON.parse(text); } catch { throw new Error('Die Antwort von Claude war unvollständig. Bitte noch einmal versuchen.'); }
   const ersatz = (antwort.usage?.iterations || []).some(x => x.type === 'fallback_message');
-  return { r, modell: antwort.model, ersatz, zeit: beleg.zeit, kosten: beleg.usd };
+  return { r, modell: antwort.model, ersatz, zeit: beleg.zeit, kosten: beleg.usd, stufe: effort };
 }
 
 /** Verbrauch zählen (gesamt, je Monat) und jede Auswertung mit Zeitpunkt und Kosten protokollieren. */
-function verbrauchMerken(u, { datei = '', art = 'Befund', modell = '' } = {}) {
+function verbrauchMerken(u, { datei = '', art = 'Befund', modell = '', stufe = 'high' } = {}) {
   const zeit = new Date().toISOString();
   if (!u) return { zeit, usd: null };
   const eingabe = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
   const usd = Math.round(kosten({ eingabe, ausgabe: u.output_tokens || 0 }) * 10000) / 10000;
   aendern(a => {
     const p = ((a.einstellungen.kiVerbrauch ||= { anzahl: 0, eingabe: 0, ausgabe: 0, seit: heuteIso() }).protokoll ||= []);
-    p.push({ zeit, datei, art, modell, eingabe, ausgabe: u.output_tokens || 0, usd });
+    p.push({ zeit, datei, art, modell, stufe, eingabe, ausgabe: u.output_tokens || 0, usd });
     if (p.length > 300) p.splice(0, p.length - 300);
   });
   aendern(a => {
@@ -242,7 +249,7 @@ export const kosten = v => v ? (v.eingabe * KI_PREIS.eingabe + v.ausgabe * KI_PR
 const gueltigesDatum = d => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= '1950-01-01' && d <= heuteIso();
 const sauber = s => String(s || '').trim();
 
-function aufbereiten(akte, { r, modell, ersatz, zeit, kosten: usd }, vorher = {}) {
+function aufbereiten(akte, { r, modell, ersatz, zeit, kosten: usd, stufe }, vorher = {}) {
   const hat = (liste, id) => id && akte[liste].some(x => x.id === id);
   // Schon vorhanden, nur nicht erkannt? Dann den vorhandenen Eintrag nehmen statt einen neuen vorzuschlagen.
   const gleich = (liste, feld, name) => akte[liste].find(x => sauber(x[feld]).toLowerCase() === sauber(name).toLowerCase())?.id;
@@ -272,7 +279,8 @@ function aufbereiten(akte, { r, modell, ersatz, zeit, kosten: usd }, vorher = {}
     kiModell: modell,
     kiZeit: zeit,
     kiKosten: usd,
-    gruende: [ersatz ? `ausgewertet von Claude (Ersatzmodell ${modell})` : 'ausgewertet von Claude'],
+    kiStufe: stufe,
+    gruende: [`ausgewertet von Claude${ersatz ? ` (Ersatzmodell ${modell})` : ''}, ${STUFE_TEXT[stufe] || 'normale Denkstufe'}`],
   };
 }
 
@@ -286,7 +294,7 @@ export async function eingangAuswerten(f, nachher = () => {}) {
   laufend.add(f.id); nachher();
   try {
     const vorher = Z.vorschlaege[f.id] || {};
-    const v = aufbereiten(Z.akte, await anfragen(f), vorher);
+    const v = aufbereiten(Z.akte, await anfragen(f, { effort: stufeFuer(vorher.typ) }), vorher);
     Z.vorschlaege[f.id] = { ...vorher, ...v, quelle: vorher.quelle || 'Sonstiges', schluessel: vorher.schluessel, kiFehler: null };
     return Z.vorschlaege[f.id];
   } catch (e) {
@@ -334,12 +342,12 @@ export async function dokumentAuswerten(docId) {
   laufend.add(docId);
   try {
     const m = await Z.drive.metadaten(d.driveId);
-    const v = aufbereiten(Z.akte, await anfragen(m), d);
+    const v = aufbereiten(Z.akte, await anfragen(m, { effort: stufeFuer(d.typ) }), d);
     aendern(a => {
       const x = finde(a, 'dokumente', docId); if (!x) return;
       // Eine selbst geschriebene Notiz (z. B. aus dem Gesundheitstagebuch) bleibt als Notiz erhalten
       if (x.kurz && !x.ki && !x.notiz) x.notiz = x.kurz;
-      Object.assign(x, { kurz: v.kurz, werte: v.werte, diagnosen: v.diagnosen, naechste: v.naechste, ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit, kiKosten: v.kiKosten });
+      Object.assign(x, { kurz: v.kurz, werte: v.werte, diagnosen: v.diagnosen, naechste: v.naechste, ki: true, kiModell: v.kiModell, kiStand: heuteIso(), kiZeit: v.kiZeit, kiKosten: v.kiKosten, kiStufe: v.kiStufe });
       if (!x.arzt && v.arzt) x.arzt = v.arzt;
       if (!x.erk && v.erk) x.erk = v.erk;
     });

@@ -13,6 +13,7 @@ import { vorschlagUebernehmen } from './formulare.js';
 import { schluesselLaden, schluesselEntfernen, schluesselVergessen, eingangAuswerten, eingangAutomatisch, dokumentAuswerten, offeneDokumente, stapelAuswerten, stapelStoppen } from './auswertung.js';
 import { duplikatVon } from './speicher.js';
 import { tkAuslesen, tkAbgleich, tkUebernehmen, tkZeitraumAnpassen, tkIgnorieren } from './tk.js';
+import { erinnerungenAbgleichen, erinnerungenEntfernen } from './erinnerungen.js';
 
 /** Dateien in den Eingang laden (Ziehen, Auswahl, Teilen) – mit Fortschritt. */
 async function hochladen(dateien) {
@@ -74,6 +75,17 @@ async function kalenderStill(laut = false) {
     if (r.status === 'ok' && (laut || r.neu)) toast(`Kalender abgeglichen: ${r.neu} neue, ${r.geaendert} aktualisierte Arzttermine${r.kandidaten.length ? `, ${r.kandidaten.length} zum Zuordnen` : ''}.`);
     else if (laut && r.status === 'keinZugriff') toast('Kein Zugriff auf den Google Kalender. Bitte „Zugriff erlauben“ wählen.', 'fehler');
     else if (laut && r.status === 'fehler') toast(r.fehler, 'fehler');
+  } catch (e) { if (e?.name === 'AnmeldungNoetig') { statusZeichnen(); if (laut) toast(e.message, 'fehler'); } }
+  await erinnerungenStill();
+}
+/** Vorsorge-Erinnerungen im Kalender abgleichen (still, oder mit Meldung bei laut). */
+async function erinnerungenStill(laut = false) {
+  try {
+    const r = await erinnerungenAbgleichen();
+    if (r.status === 'ok' && (laut || r.neu || r.entfernt)) toast(`Vorsorge-Erinnerungen: ${r.neu} neu, ${r.geaendert} angepasst, ${r.entfernt} entfernt.`);
+    else if (laut && r.status === 'keinZugriff') toast('Die App darf noch nicht in deinen Kalender schreiben. Bitte „Zugriff erlauben“ wählen.', 'fehler');
+    else if (r.status === 'fehler') toast('Kalender-Erinnerungen: ' + r.fehler, 'fehler');
+    if (['vorsorge', 'einstellungen', 'start'].includes(ansichtId()) && !$('#ebene form')) zeichnen();
   } catch (e) { if (e?.name === 'AnmeldungNoetig') { statusZeichnen(); if (laut) toast(e.message, 'fehler'); } }
 }
 
@@ -353,6 +365,7 @@ document.addEventListener('click', async ev => {
       return;
     }
     case 'ki-kosten': return blatt(V.blattKosten());
+    case 'erinnerungen-abgleich': if (!drive.verbunden()) await verbindenStarten(); else await erinnerungenStill(true); return;
     case 'tk-alle': {
       const neu = tkAbgleich(Z.akte).filter(g => g.status === 'neu');
       neu.forEach(g => tkUebernehmen(g.schluessel));
@@ -381,6 +394,7 @@ document.addEventListener('submit', async ev => {
     const meldung = await absenden(form);
     if ($('#ebene').contains(form)) blattZu(); else zeichnen();
     toast(meldung);
+    if (['vorsorge', 'erledigt', 'termin', 'kandidat', 'profil', 'arzt'].includes(form.dataset.form)) erinnerungenStill();
   } catch (e) {
     console.error(e);
     formFehler(form, e.message);
@@ -393,6 +407,18 @@ document.addEventListener('input', ev => {
   if (map[ev.target.id]) { V.docFilter[map[ev.target.id]] = ev.target.value; V.docListeZeichnen(); }
   if (ev.target.id === 'hochladen-datei' && ev.target.files?.length) { const f = [...ev.target.files]; ev.target.value = ''; hochladen(f); return; }
   if (ev.target.id === 'import-datei' && ev.target.files?.[0]) { importDateiGewaehlt(ev.target.files[0]); ev.target.value = ''; return; }
+  if (ev.target.hasAttribute?.('data-erinnerung-schalter')) {
+    const an = ev.target.checked;
+    aendern(x => { x.einstellungen.erinnerungenKalender = an; });
+    if (an) erinnerungenStill(true);
+    else erinnerungenEntfernen().then(n => { toast(`Erinnerungen ausgeschaltet${n ? `, ${n} aus dem Kalender entfernt` : ''}.`); zeichnen(); }).catch(e => toast(e.message, 'fehler'));
+    return;
+  }
+  if (ev.target.hasAttribute?.('data-vorlauf')) {
+    const t = Number(ev.target.value);
+    aendern(x => { x.einstellungen.erinnerungVorlaufTage = t; });
+    erinnerungenStill(true); return;
+  }
   if (ev.target.hasAttribute?.('data-ki-automatik')) { const an = ev.target.checked; aendern(x => { x.einstellungen.kiAutomatisch = an; }); toast(an ? 'Neue Dateien im Eingang werden automatisch ausgewertet.' : 'Auswertung nur noch auf Knopfdruck.'); return; }
   if (ev.target.id === 'k-farbe') { const v = $('#k-vorschau'); v.style.setProperty('--h', ev.target.value); }
   if (ev.target.name === 'kurz' && $('#k-vorschau')) $('#k-vorschau').textContent = ev.target.value.toUpperCase() || 'AB';

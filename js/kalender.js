@@ -172,7 +172,7 @@ export async function kalenderAbgleichen({ neuLesen = true } = {}) {
     if (neuLesen) {
       const bis = plusMonate(heuteIso(), KALENDER_MONATE_VORAUS);
       letzteEintraege = (await Promise.all(kalender.map(id => drive.kalenderTermine(id, KALENDER_AB, bis)))).flat()
-        .filter(e => e.status !== 'cancelled' && datumVon(e));
+        .filter(e => e.status !== 'cancelled' && datumVon(e) && !e.extendedProperties?.private?.gesundheitsakte);
     }
     const ergebnis = anwenden(kalender);
     Z.kalender = { stand: new Date(), kandidaten: ergebnis.kandidaten, gelesen: letzteEintraege.length, fehler: '' };

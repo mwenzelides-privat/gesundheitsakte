@@ -3,7 +3,7 @@
 // Sie ist kein Geheimnis: Sie steht in jeder Web-App öffentlich im Code und funktioniert nur
 // auf den Adressen, die in der Cloud Console als "Autorisierte JavaScript-Quellen" eingetragen sind.
 
-export const VERSION = '0.7.2';
+export const VERSION = '0.8.0';
 export const STAND = '27.11.2026';
 
 // Google-Cloud-Projekt „Gesundheitsakte“ (gesundheitsakte-515315) im privaten Konto, Client „Gesundheitsakte Web“.
@@ -15,7 +15,9 @@ export const GOOGLE_CLIENT_ID = '72259479394-3eh64lin7nld6ve59ltbt5g9cm4gnqgf.ap
 export const SCOPE_DRIVE = 'https://www.googleapis.com/auth/drive';
 // Kalender nur lesen (Iteration 3). Ohne diese Freigabe läuft die App weiter, nur ohne Kalender.
 export const SCOPE_KALENDER = 'https://www.googleapis.com/auth/calendar.readonly';
-export const SCOPES = `${SCOPE_DRIVE} ${SCOPE_KALENDER}`;
+// Iteration 7: eigene Einträge anlegen/ändern/löschen (Vorsorge-Erinnerungen). Andere Termine fasst die App nicht an.
+export const SCOPE_KALENDER_SCHREIBEN = 'https://www.googleapis.com/auth/calendar.events';
+export const SCOPES = `${SCOPE_DRIVE} ${SCOPE_KALENDER} ${SCOPE_KALENDER_SCHREIBEN}`;
 
 // Zeitraum, in dem Arzttermine aus dem Kalender gelesen werden
 export const KALENDER_AB = '2021-01-01';

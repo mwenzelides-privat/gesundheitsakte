@@ -1,10 +1,11 @@
 // Google-Anmeldung (Google Identity Services) und Zugriff auf Google Drive (REST v3).
 // Die App läuft ohne eigenen Server: Der Browser holt sich ein Zugriffstoken (1 Stunde gültig)
 // und spricht damit direkt mit Drive. Gesundheitsdaten verlassen dein Google-Konto nicht.
-import { GOOGLE_CLIENT_ID, SCOPES, SCOPE_DRIVE, SCOPE_KALENDER } from './konfig.js';
+import { GOOGLE_CLIENT_ID, SCOPES, SCOPE_DRIVE, SCOPE_KALENDER, SCOPE_KALENDER_SCHREIBEN } from './konfig.js';
 
 const KAL = 'https://www.googleapis.com/calendar/v3/';
 let kalenderOk = false;
+let kalenderSchreibenOk = false;
 
 const API = 'https://www.googleapis.com/drive/v3/';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
@@ -75,6 +76,7 @@ export const googleDrive = {
           if (antwort.error) return fehler(new Error('Anmeldung abgebrochen: ' + antwort.error));
           if (!window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPE_DRIVE)) return fehler(new Error('Ohne Zugriff auf Google Drive kann die Akte nicht gespeichert werden. Bitte bei der Anmeldung den Haken für Drive setzen.'));
           kalenderOk = window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPE_KALENDER);
+          kalenderSchreibenOk = window.google.accounts.oauth2.hasGrantedAllScopes(antwort, SCOPE_KALENDER_SCHREIBEN);
           token = antwort.access_token;
           tokenAblauf = Date.now() + (Number(antwort.expires_in) || 3600) * 1000;
           ok();
@@ -86,7 +88,7 @@ export const googleDrive = {
   },
   abmelden() {
     if (token && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(token, () => {});
-    token = null; tokenAblauf = 0; kalenderOk = false;
+    token = null; tokenAblauf = 0; kalenderOk = false; kalenderSchreibenOk = false;
   },
 
   // ---------- Google Kalender (nur lesen) ----------
@@ -103,12 +105,35 @@ export const googleDrive = {
       const r = await api('GET', KAL + `calendars/${encodeURIComponent(kalenderId)}/events?` + new URLSearchParams({
         singleEvents: 'true', orderBy: 'startTime', maxResults: '2500', showDeleted: 'false',
         timeMin: new Date(von + 'T00:00:00').toISOString(), timeMax: new Date(bis + 'T23:59:59').toISOString(),
-        fields: 'nextPageToken,items(id,status,summary,location,description,start,end,htmlLink,eventType)', ...(seite ? { pageToken: seite } : {}),
+        fields: 'nextPageToken,items(id,status,summary,location,description,start,end,htmlLink,eventType,extendedProperties)', ...(seite ? { pageToken: seite } : {}),
       }));
       alle.push(...(r.items || []).map(e => ({ ...e, kalenderId })));
       seite = r.nextPageToken || '';
     } while (seite);
     return alle;
+  },
+
+  // ---------- Google Kalender (eigene Erinnerungen schreiben, Iteration 7) ----------
+  kalenderSchreibenErlaubt: () => kalenderSchreibenOk && !!token,
+  /** Alle Einträge, die die Gesundheitsakte selbst angelegt hat (erkennbar an extendedProperties). */
+  async erinnerungenLesen(kalenderId) {
+    const alle = [];
+    let seite = '';
+    do {
+      const r = await api('GET', KAL + `calendars/${encodeURIComponent(kalenderId)}/events?` + new URLSearchParams({
+        privateExtendedProperty: 'gesundheitsakte=vorsorge', maxResults: '2500', showDeleted: 'false',
+        fields: 'nextPageToken,items(id,status,summary,start,htmlLink,extendedProperties)', ...(seite ? { pageToken: seite } : {}),
+      }));
+      alle.push(...(r.items || []).filter(e => e.status !== 'cancelled'));
+      seite = r.nextPageToken || '';
+    } while (seite);
+    return alle;
+  },
+  terminAnlegen: (kalenderId, ev) => api('POST', KAL + `calendars/${encodeURIComponent(kalenderId)}/events`, { body: JSON.stringify(ev), headers: { 'Content-Type': 'application/json' } }),
+  terminAendern: (kalenderId, id, ev) => api('PATCH', KAL + `calendars/${encodeURIComponent(kalenderId)}/events/${encodeURIComponent(id)}`, { body: JSON.stringify(ev), headers: { 'Content-Type': 'application/json' } }),
+  async terminLoeschen(kalenderId, id) {
+    try { await api('DELETE', KAL + `calendars/${encodeURIComponent(kalenderId)}/events/${encodeURIComponent(id)}`); }
+    catch (e) { if (!/ 410| 404/.test(e.message)) throw e; }   // schon gelöscht
   },
 
   async konto() {

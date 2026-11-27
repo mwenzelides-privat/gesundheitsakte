@@ -7,6 +7,8 @@ const dateien = new Map();
 let zaehler = 0;
 let verbunden = false;
 let kalenderErlaubt = true;
+let kalenderSchreiben = true;
+let evZaehler = 0;
 const ev = (id, datum, zeit, summary, extra = {}) => ({ id, status: 'confirmed', summary, start: zeit ? { dateTime: `${datum}T${zeit}:00+01:00` } : { date: datum }, htmlLink: '#kalender-' + id, ...extra });
 let kalenderEintraege = [
   ev('k1', '2026-12-03', '09:30', 'Zahnarzt Kontrolle'),
@@ -58,6 +60,13 @@ export const testDrive = {
       .filter(e => { const d = (e.start.date || e.start.dateTime).slice(0, 10); return d >= von && d <= bis; })
       .map(e => ({ kalenderId, ...e }));
   },
+  kalenderSchreibenErlaubt: () => verbunden && kalenderSchreiben,
+  async erinnerungenLesen(kalenderId) { await pause(); return kalenderEintraege.filter(e => (e.kalenderId || 'primary') === kalenderId && e.extendedProperties?.private?.gesundheitsakte === 'vorsorge').map(e => JSON.parse(JSON.stringify(e))); },
+  async terminAnlegen(kalenderId, ev) { await pause(); const e = { ...JSON.parse(JSON.stringify(ev)), id: 'ev' + (++evZaehler), status: 'confirmed', kalenderId, htmlLink: '#kalender-ev' + evZaehler }; kalenderEintraege.push(e); return e; },
+  async terminAendern(kalenderId, id, ev) { await pause(); const e = kalenderEintraege.find(x => x.id === id); Object.assign(e, JSON.parse(JSON.stringify(ev))); return e; },
+  async terminLoeschen(kalenderId, id) { await pause(); kalenderEintraege = kalenderEintraege.filter(x => x.id !== id); },
+  kalenderAlle: () => kalenderEintraege,
+  kalenderSchreibenSperren(an = true) { kalenderSchreiben = !an; },
   kalenderSetzen(liste) { kalenderEintraege = liste; },
   kalenderSperren(an = true) { kalenderErlaubt = !an; },
 

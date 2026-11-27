@@ -7,6 +7,7 @@ import { finde, kat, faecher, katVonTermin, alter, vorsorgeLage, V_TEXT, V_RANG,
 import { personenVorschlaege } from './kalender.js';
 import { kiBereit, kiGeprueft, wirdAusgewertet, kosten, offeneDokumente, stapelStand } from './auswertung.js';
 import { tkAbgleich, tkQuartale, tkWirdGelesen, qText } from './tk.js';
+import { erinnerungenAn, VORLAUF_STANDARD } from './erinnerungen.js';
 
 const A = () => Z.akte;
 const arzt = id => finde(A(), 'aerzte', id);
@@ -532,7 +533,7 @@ function kiStempel(d) {
   if (String(d.kiModell || '').includes('Claude Code')) return `am ${datum(d.kiStand)} in Claude Code (ohne API-Kosten)`;
   if (!d.kiZeit) return d.kiStand ? `am ${datum(d.kiStand)}` : '';
   const z = new Date(d.kiZeit);
-  return `am ${datum(d.kiZeit.slice(0, 10))}, ${z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr${d.kiKosten != null ? ' · ' + dollar(d.kiKosten) : ''}`;
+  return `am ${datum(d.kiZeit.slice(0, 10))}, ${z.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr${d.kiKosten != null ? ' · ' + dollar(d.kiKosten) : ''}${d.kiStufe === 'max' ? ' · höchste Denkstufe' : ''}`;
 }
 export function docListeZeichnen() {
   const ziel = document.getElementById('doc-liste'); if (!ziel) return;
@@ -565,7 +566,7 @@ export function ansichtVorsorge() {
     const faelligText = v.status === 'spaeter' ? 'ab ' + v.faellig.slice(0, 4) : v.einmalig ? 'einmalig, erledigt' : v.status === 'unbekannt' ? 'unbekannt' : datum(v.faellig);
     return `<div class="vorsorge-zeile"><span class="streifen st-${v.status}"></span>
       <button class="vz-name" data-vorsorge="${v.id}"><div class="t">${esc(v.name)}</div><div class="s">${esc(v.regel)}</div></button>
-      <div class="s">Zuletzt: <b>${datum(v.zuletzt)}</b><br>Fällig: <b>${faelligText}</b></div>
+      <div class="s">Zuletzt: <b>${datum(v.zuletzt)}</b><br>Fällig: <b>${faelligText}</b>${v.kalErinnerung && ['ueber', 'bald', 'ok'].includes(v.status) ? `<br>${svg('kalender', 'width="12" height="12"')} Erinnerung: ${v.kalErinnerung.link && !v.kalErinnerung.link.startsWith('#') ? `<a href="${esc(v.kalErinnerung.link)}" target="_blank" rel="noopener">${datum(v.kalErinnerung.datum)}</a>` : datum(v.kalErinnerung.datum)}` : ''}</div>
       <div class="s">${ar ? `${esc(ar.name)}<br><span class="num">${esc(ar.tel || '')}</span>` : '<span class="muted">keine Praxis zugeordnet</span>'}</div>
       <div class="vz-aktion"><span class="pill st-${v.status}">${V_TEXT[v.status]}</span>${aktion}</div>
     </div>`;
@@ -574,13 +575,38 @@ export function ansichtVorsorge() {
   <div class="kopf"><div><h1>Vorsorge</h1><p>${a.profil.jahrgang ? `Nach den Regeln der gesetzlichen Krankenkasse und der Impfempfehlungen für ${esc(a.profil.geschlecht || 'dich')}, ${al} Jahre, plus eigene Regeln.` : 'Bitte zuerst Jahrgang und Geschlecht im Profil eintragen.'} Mit „Erledigt am …“ trägst du die letzte Untersuchung ein, daraus berechnet die App die nächste.</p></div>${neuKnopf('vorsorge', 'Eigene Regel')}</div>
   <div class="stack" style="gap:10px">${aktiv.map(zeile).join('')}</div>
   ${aus.length ? `<details class="panel"><summary><b>Ausgeschaltet (${aus.length})</b> <span class="small muted">Vorschläge und Regeln, die du nicht brauchst</span></summary><div class="stack" style="gap:10px;margin-top:12px">${aus.map(zeile).join('')}</div></details>` : ''}
-  <section class="panel grid2"><div><div class="panel-kopf"><h2>So wirst du erinnert</h2><span class="pill st-spaeter">ab Iteration 7</span></div>
-    <p class="small" style="margin:0 0 12px">Sechs Wochen vor der Fälligkeit trägt die App einen Termin in deinen Google Kalender ein. Dein S26 meldet sich dann wie bei jedem anderen Termin. Sobald ein passender Arzttermin im Kalender steht, wird die Erinnerung entfernt.</p></div>
+  <section class="panel grid2"><div><div class="panel-kopf"><h2>So wirst du erinnert</h2>${erinnerungPill()}</div>
+    <p class="small" style="margin:0 0 12px">${vorlaufText(a)} vor der Fälligkeit trägt die App um 9:00 Uhr einen Eintrag „Vorsorge: … – Termin vereinbaren“ in deinen Google Kalender ein, mit Praxis, Telefon, Adresse und Sprechzeiten. Dein S26 meldet sich dann wie bei jedem anderen Termin. Ist die Untersuchung schon fällig, steht die Erinnerung heute im Kalender und rückt alle 14 Tage nach, bis du einen Termin hast. Sobald ein passender Arzttermin im Kalender steht oder du „Erledigt am …“ einträgst, verschwindet sie.</p>
+    ${erinnerungKnoepfe()}</div>
     ${bsp ? (() => { const ar = arzt(bsp.arzt); return `<div class="erinnerung"><div class="erinnerung-kopf">${svg('kalender')}Vorschau: Eintrag im Google Kalender</div>
-      <div class="erinnerung-body"><b>Termin vereinbaren: ${esc(bsp.name)}</b><span class="small muted">Ganztägig · Erinnerung um 9:00 Uhr</span>
+      <div class="erinnerung-body"><b>Vorsorge: ${esc(bsp.name)} – Termin vereinbaren</b><span class="small muted">9:00 bis 9:15 Uhr · Hinweis auf dem Handy</span>
       <span class="small">${esc(ar.name)}<br>${esc(ar.adresse || '')}<br>Tel. <span class="num">${esc(ar.tel || '–')}</span></span>
       <span class="small">Sprechzeiten: ${Object.entries(ar.zeiten || {}).filter(([, z]) => z?.length).map(([t, z]) => WT_NAME[t] + ' ' + zeitenText(z)).join(' · ') || 'nicht hinterlegt'}</span></div></div>`; })() : ''}
   </section>`;
+}
+
+const vorlaufText = a => { const w = Math.round((a.einstellungen?.erinnerungVorlaufTage || VORLAUF_STANDARD) / 7); return w === 1 ? 'Eine Woche' : `${['', 'Eine', 'Zwei', 'Drei', 'Vier', 'Fünf', 'Sechs', 'Sieben', 'Acht', 'Neun', 'Zehn', 'Elf', 'Zwölf'][w] || w} Wochen`; };
+function erinnerungLage() {
+  const a = A();
+  if (Z.modus !== 'konto') return 'beispiel';
+  if (!erinnerungenAn(a)) return 'aus';
+  if (!Z.drive?.verbunden()) return 'getrennt';
+  if (!Z.drive.kalenderSchreibenErlaubt?.()) return 'zugriff';
+  return Z.erinnerungen?.fehler ? 'fehler' : 'an';
+}
+function erinnerungPill() {
+  const l = erinnerungLage();
+  return { an: '<span class="pill st-ok">aktiv</span>', aus: '<span class="pill st-spaeter">ausgeschaltet</span>', zugriff: '<span class="pill st-bald">Zugriff fehlt</span>',
+    getrennt: '<span class="pill st-spaeter">nach dem Verbinden</span>', fehler: '<span class="pill st-ueber">Fehler</span>', beispiel: '<span class="pill st-spaeter">nur mit Konto</span>' }[l];
+}
+function erinnerungKnoepfe() {
+  const l = erinnerungLage();
+  const anzahl = A().vorsorge.filter(v => v.kalErinnerung).length;
+  if (l === 'an') return `<p class="small" style="margin:0 0 10px">${anzahl} ${anzahl === 1 ? 'Erinnerung steht' : 'Erinnerungen stehen'} im Kalender${Z.erinnerungen?.stand ? `, abgeglichen um ${Z.erinnerungen.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr` : ''}.</p><div class="knoepfe"><button class="btn klein" data-aktion="erinnerungen-abgleich">Jetzt abgleichen</button><a class="btn klein" href="#einstellungen">Einstellungen</a></div>`;
+  if (l === 'zugriff') return `<p class="small" style="margin:0 0 10px">Dafür braucht die App einmalig die Erlaubnis, Termine in deinen Kalender zu schreiben. Sie ändert nur ihre eigenen Erinnerungen.</p><button class="btn klein primaer" data-aktion="kalender-freigeben">Zugriff erlauben</button>`;
+  if (l === 'fehler') return `<p class="hinweis-text warn">${esc(Z.erinnerungen.fehler)}</p><button class="btn klein" data-aktion="erinnerungen-abgleich">Noch einmal versuchen</button>`;
+  if (l === 'aus') return '<a class="btn klein" href="#einstellungen">In den Einstellungen einschalten</a>';
+  return '';
 }
 
 // ======================================================================
@@ -635,7 +661,7 @@ export function ansichtTK() {
   const verb = [
     ['Google-Konto (privat)', Z.konto ? esc(Z.konto.email) : 'Anmeldung, nur du hast Zugriff', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
     ['Google Drive', 'Ablage und Datenbestand akte.json', Z.modus === 'konto' ? (verbunden ? 'ok' : 'getrennt') : 2],
-    ['Google Kalender', 'Arzttermine lesen (Erinnerungen schreiben ab Iteration 7)', Z.modus === 'konto' ? (Z.drive?.kalenderErlaubt?.() ? 'ok' : 'getrennt') : 3],
+    ['Google Kalender', 'Arzttermine lesen, Vorsorge-Erinnerungen schreiben', Z.modus === 'konto' ? (Z.drive?.kalenderErlaubt?.() && Z.drive?.kalenderSchreibenErlaubt?.() ? 'ok' : 'getrennt') : 3],
     ['Befund-Auswertung (Claude)', 'Dokumente lesen, Kurzfassung, Werte, Einordnung, TK-Diagnosen', kiBereit() ? 'ok' : Z.modus === 'konto' ? 'getrennt' : 5],
     ['Google Maps', 'Adressen, Telefon, Sprechzeiten', 8],
     ['Hintergrunddienst (Apps Script)', 'nachts: Eingang, Maps-Abgleich, Erinnerungen', 9],
@@ -744,7 +770,7 @@ function kiEinstellungen(a) {
     <p class="small" style="margin:0 0 12px">Claude liest Befunde, Arztbriefe, Laborberichte und Scans, fasst sie in einfachen Worten zusammen und schlägt Fach, Arzt, Erkrankung, Diagnosen (ICD-10) und Messwerte vor. Dafür wird das jeweilige Dokument an Anthropic übertragen.</p>
     <dl class="meta-grid">
       <dt>Schlüssel</dt><dd>${kiBereit() ? 'eingetragen · <button class="link" data-aktion="ki-entfernen">entfernen</button>' : !verbunden ? 'wird beim Verbinden geladen' : kiGeprueft() ? 'noch keiner' : 'wird geprüft …'}</dd>
-      <dt>Modell</dt><dd>Claude Opus 5.5</dd>
+      <dt>Modell</dt><dd>Claude Opus 5.5 · Arztbriefe, Befunde, Labor und Bildgebung mit höchster Denkstufe, Rechnungen und Formulare mit normaler</dd>
       <dt>Automatisch</dt><dd><label class="schalter"><input type="checkbox" data-ki-automatik ${e.kiAutomatisch === false ? '' : 'checked'}> neue Dateien im Eingang gleich auswerten</label></dd>
       <dt>Verbrauch</dt><dd>${v ? `${v.anzahl} Auswertungen seit ${datum(v.seit)}, etwa ${usd(kosten(v))}` : 'noch keine Auswertung'}</dd>
     </dl>
@@ -768,7 +794,10 @@ function kalenderEinstellungen(a) {
   const namen = Z.kalenderNamen || {};
   return `<section class="panel"><div class="panel-kopf"><h2>Google Kalender</h2>${erlaubt ? '<button class="link" data-aktion="kalender-abgleich">Jetzt abgleichen</button>' : ''}</div>
     <dl class="meta-grid">
-      <dt>Zugriff</dt><dd>${erlaubt ? 'nur lesen, erlaubt' : Z.drive?.verbunden() ? 'nicht erlaubt · <button class="link" data-aktion="kalender-freigeben">Zugriff erlauben</button>' : 'beim nächsten Verbinden'}</dd>
+      <dt>Lesen</dt><dd>${erlaubt ? 'erlaubt' : Z.drive?.verbunden() ? 'nicht erlaubt · <button class="link" data-aktion="kalender-freigeben">Zugriff erlauben</button>' : 'beim nächsten Verbinden'}</dd>
+      <dt>Schreiben</dt><dd>${Z.drive?.kalenderSchreibenErlaubt?.() ? 'erlaubt, nur eigene Erinnerungen' : Z.drive?.verbunden() ? 'nicht erlaubt · <button class="link" data-aktion="kalender-freigeben">Zugriff erlauben</button>' : 'beim nächsten Verbinden'}</dd>
+      <dt>Vorsorge</dt><dd><label class="schalter"><input type="checkbox" data-erinnerung-schalter ${erinnerungenAn(a) ? 'checked' : ''}> Erinnerungen in den Hauptkalender eintragen</label></dd>
+      <dt>Vorlauf</dt><dd><select data-vorlauf aria-label="Vorlauf der Erinnerung">${[14, 28, 42, 56, 84].map(t => `<option value="${t}" ${(e.erinnerungVorlaufTage || VORLAUF_STANDARD) === t ? 'selected' : ''}>${t / 7} Wochen vor der Fälligkeit</option>`).join('')}</select></dd>
       <dt>Kalender</dt><dd>${kal.map(id => esc(namen[id] || (id === 'primary' ? 'Hauptkalender' : id))).join(', ')}${erlaubt ? ' · <button class="link" data-aktion="kalender-wahl">Auswählen</button>' : ''}</dd>
       <dt>Zeitraum</dt><dd>ab 2021 bis 2 Jahre voraus</dd>
       ${Z.kalender?.stand ? `<dt>Zuletzt</dt><dd>${Z.kalender.stand.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr, ${Z.kalender.gelesen} Einträge gelesen</dd>` : ''}

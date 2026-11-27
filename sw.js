@@ -1,11 +1,11 @@
 // Service Worker: hält die App-Dateien offline bereit und nimmt am Handy geteilte Dateien entgegen.
 // Daten aus Google Drive werden nie zwischengespeichert.
-const CACHE = 'gesundheitsakte-0.7.2';
+const CACHE = 'gesundheitsakte-0.8.0';
 const GETEILT = 'gesundheitsakte-geteilt';   // geteilte Dateien bis zur Ablage im Eingang
 const DATEIEN = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/konfig.js', 'js/hilfen.js', 'js/modell.js', 'js/beispiel.js', 'js/drive.js', 'js/speicher.js', 'js/ansichten.js', 'js/formulare.js',
-  'js/import.js', 'js/kalender.js', 'js/erkennung.js', 'js/auswertung.js', 'js/tk.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
+  'js/import.js', 'js/kalender.js', 'js/erkennung.js', 'js/auswertung.js', 'js/tk.js', 'js/erinnerungen.js', 'lib/pdf.min.mjs', 'lib/pdf.worker.min.mjs',
   'icons/icon-192.png', 'icons/favicon-32.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
 ];
 
