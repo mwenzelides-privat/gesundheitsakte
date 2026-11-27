@@ -473,5 +473,6 @@ if (new URLSearchParams(location.search).has('geteilt')) history.replaceState(nu
 geteilteAblegen();
 if (TEST) document.title = 'Gesundheitsakte (Test)';
 $('#version').textContent = 'Version ' + VERSION + (TEST ? ' · Testmodus' : '');
+document.querySelectorAll('[data-version]').forEach(el => { el.textContent = 'v' + VERSION + (TEST ? ' Test' : ''); el.title = 'Version ' + VERSION; });
 if (!ausCacheStarten(drive)) Z.modus = 'leer';
 zeichnen();

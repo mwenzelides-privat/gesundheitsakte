@@ -538,3 +538,7 @@ body.blatt-offen { overflow: hidden; }
 .schalter input { width: 18px; height: 18px; accent-color: var(--accent); }
 .dreher { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: drehen .8s linear infinite; vertical-align: -1px; margin-right: 4px; }
 @keyframes drehen { to { transform: rotate(360deg); } }
+
+/* Versionsnummer immer sichtbar (Seitenleiste am PC, Kopfzeile am Handy) */
+.versionsnr { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.versionsnr.oben { font-size: .72rem; color: var(--muted); font-weight: 600; margin-left: -4px; }
